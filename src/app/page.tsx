@@ -35,10 +35,6 @@ export default function Home() {
     ])
   }
 
-  const formatMessageForLindy = (message: string) => {
-    return `User speaking: ${userName}\nMessage: ${message}`
-  }
-
   const handleSendMessage = async (message: string) => {
     if (!message.trim() || isLoading) return
     
@@ -53,6 +49,9 @@ export default function Home() {
       // Add user message first
       setMessages(prev => [...prev, userMessage])
 
+      // Format message for Lindy
+      const formattedMessage = `User speaking: ${userName}\nMessage: ${message}`;
+
       // Send message to Lindy
       const response = await fetch('/api/lindy', {
         method: 'POST',
@@ -60,9 +59,8 @@ export default function Home() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          message,
-          userName,
-          taskId: currentTaskId // Pass the current taskId if we have one
+          message: formattedMessage,
+          taskId: currentTaskId
         })
       })
 
@@ -72,28 +70,20 @@ export default function Home() {
         throw new Error(data.error || 'Failed to get response')
       }
 
-      // Only update taskId if we get a new one and don't have one yet
+      // Store taskId from first response
       if (data.taskId && !currentTaskId) {
         setCurrentTaskId(data.taskId)
       }
-      
-      if (data.schedulingDetails) {
-        setSchedulingDetails(data.schedulingDetails)
-      }
 
-      // Make sure we have content before adding the message
-      if (data.content) {
-        setMessages(prev => [
-          ...prev,
-          { 
-            id: Date.now().toString(),
-            role: 'assistant' as const, 
-            content: data.content
-          }
-        ])
-      } else {
-        throw new Error('No response content received')
-      }
+      // Add Lindy's response to chat
+      setMessages(prev => [
+        ...prev,
+        { 
+          id: Date.now().toString(),
+          role: 'assistant' as const, 
+          content: data.content
+        }
+      ])
     } catch (error) {
       console.error('Error sending message:', error)
       setMessages(prev => [

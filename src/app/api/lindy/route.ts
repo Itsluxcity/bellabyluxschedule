@@ -9,15 +9,6 @@ export async function POST(request: Request) {
     const body = await request.json();
     console.log('Received request:', body);
 
-    // If no message or userName, return error
-    if (!body.message || !body.userName) {
-      return NextResponse.json({ error: 'Message and userName are required' }, { status: 400 });
-    }
-
-    // Format message for Lindy
-    const formattedMessage = `User speaking: ${body.userName}\nMessage: ${body.message}`;
-    console.log('Formatted message:', formattedMessage);
-
     // Send message to Lindy
     const lindyResponse = await fetch(LINDY_WEBHOOK_URL, {
       method: 'POST',
@@ -26,10 +17,9 @@ export async function POST(request: Request) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        message: formattedMessage,
-        taskId: body.taskId || undefined,
-        handleInSameTask: true,
-        type: 'message'
+        message: body.message,
+        taskId: body.taskId,
+        handleInSameTask: true
       })
     });
 
@@ -50,22 +40,13 @@ export async function POST(request: Request) {
       throw new Error('Failed to parse Lindy response');
     }
 
-    // Extract the actual response content and taskId
-    const responseData = {
-      content: data.content,
-      taskId: data.taskId || body.taskId, // Use existing taskId if no new one provided
-      requiresDetails: data.requiresDetails === true,
-      schedulingDetails: data.schedulingDetails || null
-    };
-
-    console.log('Sending to frontend:', responseData);
-    return NextResponse.json(responseData);
+    // Return exactly what Lindy sends us
+    return NextResponse.json(data);
     
   } catch (error: any) {
     console.error('Full error details:', error);
     return NextResponse.json(
       { 
-        content: 'I apologize, but I encountered an error processing your request. Please try again.',
         error: 'Failed to process message', 
         details: error instanceof Error ? error.message : 'Unknown error'
       },
