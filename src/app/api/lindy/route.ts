@@ -7,19 +7,24 @@ const LINDY_SECRET_KEY = 'ceddc1d497adf098fb3564709ebf7f01824ee74a2c3ba8492f43b2
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    console.log('Received request body:', body); // Log incoming request
     
-    // Format request for Lindy
-    const lindyRequest = {
+    // If this is a response from Lindy (they send back handleInSameTask=true)
+    if (body.handleInSameTask === true && !body.message) {
+      console.log('Received Lindy response webhook, ignoring to prevent loops');
+      return NextResponse.json({ status: 'ok' });
+    }
+
+    // Only proceed if we have a message to send
+    if (!body.message) {
+      console.log('No message in request, ignoring');
+      return NextResponse.json({ error: 'No message provided' }, { status: 400 });
+    }
+
+    console.log('Sending message to Lindy:', {
       message: body.message,
-      sender: body.userName,
-      handleInSameTask: true,
-      taskId: body.taskId || undefined,
-      type: 'message' // Add message type
-    };
-    
-    console.log('Sending to Lindy:', lindyRequest); // Log outgoing request
-    
+      taskId: body.taskId
+    });
+
     // Send message to Lindy
     const lindyResponse = await fetch(LINDY_WEBHOOK_URL, {
       method: 'POST',
@@ -27,11 +32,14 @@ export async function POST(request: Request) {
         'Authorization': `Bearer ${LINDY_SECRET_KEY}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(lindyRequest)
+      body: JSON.stringify({
+        message: body.message,
+        taskId: body.taskId || undefined
+      })
     });
 
     const responseText = await lindyResponse.text();
-    console.log('Raw Lindy response:', responseText); // Log raw response
+    console.log('Raw Lindy response:', responseText);
 
     if (!lindyResponse.ok) {
       console.error('Lindy response not OK. Status:', lindyResponse.status);
@@ -39,18 +47,22 @@ export async function POST(request: Request) {
     }
 
     // Parse response as JSON
-    const data = JSON.parse(responseText);
-    console.log('Parsed Lindy response:', data);
-    
-    // Return the response, preserving all fields from Lindy
-    const response = {
-      ...data,
-      content: data.content?.replace(/\\n/g, '\n') || 'No response content',
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      console.error('Failed to parse Lindy response:', e);
+      return NextResponse.json({ 
+        content: 'I received your message but encountered an error processing the response. Please try again.',
+        error: 'Invalid JSON response'
+      }, { status: 500 });
+    }
+
+    // Return the response
+    return NextResponse.json({
+      content: data.content || 'No response content',
       taskId: data.taskId
-    };
-    
-    console.log('Sending response to client:', response); // Log outgoing response
-    return NextResponse.json(response);
+    });
     
   } catch (error: any) {
     console.error('Full error details:', {
