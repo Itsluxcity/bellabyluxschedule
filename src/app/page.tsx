@@ -5,11 +5,7 @@ import ChatInput from '@/components/ChatInput'
 import MessageList from '@/components/MessageList'
 import SuggestionBubbles from '@/components/SuggestionBubbles'
 import WelcomeOverlay from '@/components/WelcomeOverlay'
-
-type Message = {
-  role: 'user' | 'assistant'
-  content: string
-}
+import { Message } from '@/types'
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([])
@@ -24,7 +20,11 @@ export default function Home() {
     // Add a welcome message from Bella
     setTimeout(() => {
       setMessages([
-        { role: 'assistant' as const, content: `Hello ${name}! I'm Bella, your personal AI assistant. How can I help you today?` }
+        { 
+          id: Date.now().toString(),
+          role: 'assistant' as const, 
+          content: `Hello ${name}! I'm Bella, your personal AI assistant. How can I help you today?` 
+        }
       ])
     }, 500)
   }
@@ -33,7 +33,11 @@ export default function Home() {
     if (!message.trim()) return
     
     // Add user message
-    const newMessages = [...messages, { role: 'user' as const, content: message }]
+    const newMessages = [...messages, { 
+      id: Date.now().toString(),
+      role: 'user' as const, 
+      content: message 
+    }]
     setMessages(newMessages)
     setIsLoading(true)
     
@@ -41,7 +45,11 @@ export default function Home() {
     setTimeout(() => {
       setMessages([
         ...newMessages,
-        { role: 'assistant' as const, content: `I'm processing your request: "${message}". This is a placeholder response.` }
+        { 
+          id: (Date.now() + 1).toString(),
+          role: 'assistant' as const, 
+          content: `I'm processing your request: "${message}". This is a placeholder response.` 
+        }
       ])
       setIsLoading(false)
     }, 1500)

@@ -1,12 +1,13 @@
 'use client'
 
-import { Message } from '@/app/page'
+import { Message } from '@/types'
 
 interface MessageListProps {
   messages: Message[]
+  isLoading: boolean
 }
 
-export default function MessageList({ messages }: MessageListProps) {
+export default function MessageList({ messages, isLoading }: MessageListProps) {
   return (
     <div className="message-container">
       {messages.map((message) => (
@@ -61,6 +62,38 @@ export default function MessageList({ messages }: MessageListProps) {
           </div>
         </div>
       ))}
+      {isLoading && (
+        <div className="message assistant-message">
+          <div className="flex items-start">
+            <div className="w-10 h-10 rounded-2xl flex items-center justify-center mr-4 bg-chat-input-bg">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                className="w-6 h-6 animate-pulse"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
+                />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold mb-2 text-chat-text opacity-90">
+                Bella
+              </p>
+              <div className="flex space-x-2">
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '200ms' }}></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '400ms' }}></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 } 
