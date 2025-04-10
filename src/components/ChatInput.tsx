@@ -4,20 +4,21 @@ import { useState, KeyboardEvent } from 'react'
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void
+  isLoading: boolean
 }
 
-export default function ChatInput({ onSendMessage }: ChatInputProps) {
+export default function ChatInput({ onSendMessage, isLoading }: ChatInputProps) {
   const [message, setMessage] = useState('')
 
   const handleSend = () => {
-    if (message.trim()) {
+    if (message.trim() && !isLoading) {
       onSendMessage(message)
       setMessage('')
     }
   }
 
   const handleKeyPress = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
       e.preventDefault()
       handleSend()
     }
@@ -35,11 +36,14 @@ export default function ChatInput({ onSendMessage }: ChatInputProps) {
             className="w-full p-4 pr-12 text-white bg-transparent rounded-2xl resize-none focus:outline-none"
             rows={1}
             style={{ minHeight: '3.5rem' }}
+            disabled={isLoading}
           />
           <button
             onClick={handleSend}
-            className="absolute right-3 p-2 text-gray-400 hover:text-white transition-colors bg-white bg-opacity-10 rounded-full hover:bg-opacity-20"
-            disabled={!message.trim()}
+            className={`absolute right-3 p-2 text-gray-400 hover:text-white transition-colors bg-white bg-opacity-10 rounded-full hover:bg-opacity-20 ${
+              isLoading ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+            disabled={!message.trim() || isLoading}
           >
             <svg
               width="16"
