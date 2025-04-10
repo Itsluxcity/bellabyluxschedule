@@ -130,15 +130,16 @@ async function sendToLindy(request: LindyRequest, retryCount = 0): Promise<Lindy
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    console.log('Received request:', body);
     
-    // Validate request
-    if (!body.message || typeof body.message !== 'string') {
-      return NextResponse.json({ error: 'Invalid or missing message' }, { status: 400 });
+    // Validate request - check for content, not message
+    if (!body.content || typeof body.content !== 'string') {
+      return NextResponse.json({ error: 'Invalid or missing content' }, { status: 400 });
     }
 
-    // Format request to match what Lindy expects
+    // Format request for Lindy
     const lindyRequest: LindyRequest = {
-      content: body.message.trim(),
+      content: body.content.trim(),
       taskId: body.taskId || '',
       requiresDetails: true,
       schedulingDetails: {
@@ -146,7 +147,7 @@ export async function POST(request: Request) {
         time: '',
         duration: '',
         purpose: '',
-        participants: []
+        participants: body.participants || []
       }
     };
 
@@ -176,7 +177,7 @@ export async function POST(request: Request) {
       throw new Error('Invalid JSON response from Lindy');
     }
 
-    // Return the response in the same format Lindy uses
+    // Return the response in the same format
     return NextResponse.json({
       content: data.content,
       taskId: data.taskId || lindyRequest.taskId,

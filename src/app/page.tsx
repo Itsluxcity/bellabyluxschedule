@@ -49,10 +49,6 @@ export default function Home() {
     ])
   }
 
-  const formatMessage = (userName: string, message: string): string => {
-    return message.trim();  // No need for the "User speaking" prefix anymore
-  }
-
   const handleSendMessage = async (message: string) => {
     if (!message.trim() || isLoading) return;
     
@@ -68,7 +64,7 @@ export default function Home() {
 
       // Format request for Lindy
       const lindyRequest: LindyRequest = {
-        content: formatMessage(userName, message),
+        content: message.trim(),
         taskId: currentTaskId,
         requiresDetails: true,
         schedulingDetails: {
@@ -80,6 +76,8 @@ export default function Home() {
         }
       };
 
+      console.log('Sending request:', lindyRequest);
+
       // Send to Lindy
       const response = await fetch('/api/lindy', {
         method: 'POST',
@@ -90,6 +88,7 @@ export default function Home() {
       });
 
       const data = await response.json();
+      console.log('Received response:', data);
       
       if (!response.ok) {
         throw new Error(data.error || 'Failed to get response');
