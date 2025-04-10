@@ -6,9 +6,16 @@ const MAX_RETRIES = 2;
 const RETRY_DELAY = 1000; // 1 second
 
 interface LindyRequest {
-  message: string;
+  content: string;
   taskId?: string;
-  handleInSameTask: boolean;
+  requiresDetails?: boolean;
+  schedulingDetails?: {
+    date?: string;
+    time?: string;
+    duration?: string;
+    purpose?: string;
+    participants?: string[];
+  };
 }
 
 interface LindyResponse {
@@ -129,11 +136,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid or missing message' }, { status: 400 });
     }
 
-    // Always force handleInSameTask and include taskId
-    const lindyRequest = {
-      message: body.message.trim(),
-      handleInSameTask: true,
-      taskId: body.taskId || undefined  // Lindy will create a new task if undefined
+    // Format request to match what Lindy expects
+    const lindyRequest: LindyRequest = {
+      content: body.message.trim(),
+      taskId: body.taskId || '',
+      requiresDetails: true,
+      schedulingDetails: {
+        date: '',
+        time: '',
+        duration: '',
+        purpose: '',
+        participants: []
+      }
     };
 
     console.log('Sending to Lindy:', lindyRequest);
@@ -148,19 +162,26 @@ export async function POST(request: Request) {
       body: JSON.stringify(lindyRequest)
     });
 
+    const responseText = await response.text();
+    console.log('Raw Lindy response:', responseText);
+
     if (!response.ok) {
-      throw new Error(`Failed to get response from Lindy: ${await response.text()}`);
+      throw new Error(`Failed to get response from Lindy: ${responseText}`);
     }
 
-    const data = await response.json();
-    console.log('Received from Lindy:', data);
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      throw new Error('Invalid JSON response from Lindy');
+    }
 
-    // Always include taskId in response
+    // Return the response in the same format Lindy uses
     return NextResponse.json({
       content: data.content,
       taskId: data.taskId || lindyRequest.taskId,
       requiresDetails: data.requiresDetails,
-      schedulingDetails: data.schedulingDetails
+      schedulingDetails: data.schedulingDetails || lindyRequest.schedulingDetails
     });
 
   } catch (error) {

@@ -15,6 +15,13 @@ interface SchedulingDetails {
   participants?: string[];
 }
 
+interface LindyRequest {
+  content: string;
+  taskId?: string;
+  requiresDetails?: boolean;
+  schedulingDetails?: SchedulingDetails;
+}
+
 interface LindyResponse {
   content: string;
   taskId: string;
@@ -27,7 +34,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false)
   const [userName, setUserName] = useState('')
   const [showWelcome, setShowWelcome] = useState(true)
-  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
+  const [currentTaskId, setCurrentTaskId] = useState<string>('')
   const [schedulingDetails, setSchedulingDetails] = useState<SchedulingDetails | null>(null)
 
   const handleNameSubmit = (name: string) => {
@@ -43,7 +50,7 @@ export default function Home() {
   }
 
   const formatMessage = (userName: string, message: string): string => {
-    return `User speaking: ${userName}\nMessage: ${message}`.trim();
+    return message.trim();  // No need for the "User speaking" prefix anymore
   }
 
   const handleSendMessage = async (message: string) => {
@@ -59,16 +66,27 @@ export default function Home() {
         content: message
       }]);
 
+      // Format request for Lindy
+      const lindyRequest: LindyRequest = {
+        content: formatMessage(userName, message),
+        taskId: currentTaskId,
+        requiresDetails: true,
+        schedulingDetails: {
+          date: '',
+          time: '',
+          duration: '',
+          purpose: '',
+          participants: [userName]
+        }
+      };
+
       // Send to Lindy
       const response = await fetch('/api/lindy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          message: formatMessage(userName, message),
-          taskId: currentTaskId
-        })
+        body: JSON.stringify(lindyRequest)
       });
 
       const data = await response.json();
@@ -77,10 +95,8 @@ export default function Home() {
         throw new Error(data.error || 'Failed to get response');
       }
 
-      // Update taskId from response
-      if (data.taskId) {
-        setCurrentTaskId(data.taskId);
-      }
+      // Always update taskId with what Lindy sends back
+      setCurrentTaskId(data.taskId);
 
       // Add Lindy's response
       setMessages(prev => [...prev, {
