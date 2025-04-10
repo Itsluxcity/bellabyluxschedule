@@ -18,14 +18,12 @@ interface SchedulingDetails {
 interface LindyRequest {
   content: string;
   taskId?: string;
-  requiresDetails?: boolean;
   schedulingDetails?: SchedulingDetails;
 }
 
 interface LindyResponse {
   content: string;
   taskId: string;
-  requiresDetails?: boolean;
   schedulingDetails?: SchedulingDetails;
 }
 
@@ -66,7 +64,6 @@ export default function Home() {
       const lindyRequest: LindyRequest = {
         content: message.trim(),
         taskId: currentTaskId || '', // Empty string if no taskId
-        requiresDetails: true,
         schedulingDetails: {
           date: '',
           time: '',

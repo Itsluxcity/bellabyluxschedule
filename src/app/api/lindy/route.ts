@@ -6,7 +6,6 @@ const LINDY_SECRET_KEY = 'ceddc1d497adf098fb3564709ebf7f01824ee74a2c3ba8492f43b2
 interface LindyRequest {
   content: string;
   taskId?: string;
-  requiresDetails?: boolean;
   schedulingDetails?: {
     date?: string;
     time?: string;
@@ -19,7 +18,6 @@ interface LindyRequest {
 interface LindyResponse {
   content: string;
   taskId?: string;
-  requiresDetails?: boolean;
   schedulingDetails?: {
     date?: string;
     time?: string;
@@ -69,7 +67,6 @@ export async function POST(request: Request) {
     const lindyRequest: LindyRequest = {
       content: body.content.trim(),
       taskId: body.taskId || '', // Empty string if no taskId
-      requiresDetails: true,
       schedulingDetails: {
         date: '',
         time: '',
@@ -86,7 +83,6 @@ export async function POST(request: Request) {
     return NextResponse.json({
       content: data.content,
       taskId: data.taskId || lindyRequest.taskId, // Keep existing if no new one
-      requiresDetails: data.requiresDetails,
       schedulingDetails: data.schedulingDetails || lindyRequest.schedulingDetails
     });
 
