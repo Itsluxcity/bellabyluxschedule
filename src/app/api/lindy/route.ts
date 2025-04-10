@@ -123,54 +123,48 @@ async function sendToLindy(request: LindyRequest, retryCount = 0): Promise<Lindy
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    console.log('Received request:', {
-      message: body.message,
-      taskId: body.taskId,
-      timestamp: new Date().toISOString()
-    });
-
+    
     // Validate request
     if (!body.message || typeof body.message !== 'string') {
-      return NextResponse.json(
-        { error: 'Invalid or missing message' }, 
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Invalid or missing message' }, { status: 400 });
     }
 
-    // Construct Lindy request
-    const lindyRequest: LindyRequest = {
+    // Always force handleInSameTask and include taskId
+    const lindyRequest = {
       message: body.message.trim(),
       handleInSameTask: true,
-      taskId: body.taskId?.trim() || undefined
+      taskId: body.taskId || undefined  // Lindy will create a new task if undefined
     };
 
-    // Send to Lindy with retry logic
-    const result = await sendToLindy(lindyRequest);
+    console.log('Sending to Lindy:', lindyRequest);
 
-    if ('error' in result) {
-      console.error('Error from Lindy:', result);
-      return NextResponse.json(
-        { 
-          error: result.error, 
-          details: result.details,
-          retryable: result.retryable 
-        },
-        { status: result.retryable ? 503 : 400 }
-      );
+    // Send to Lindy
+    const response = await fetch(LINDY_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LINDY_SECRET_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(lindyRequest)
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to get response from Lindy: ${await response.text()}`);
     }
 
-    // Success - return the validated response
-    return NextResponse.json(result);
-    
-  } catch (error: any) {
-    console.error('Unexpected error:', error);
-    return NextResponse.json(
-      { 
-        error: 'Internal server error', 
-        details: error.message,
-        retryable: true
-      },
-      { status: 500 }
-    );
+    const data = await response.json();
+    console.log('Received from Lindy:', data);
+
+    // Always include taskId in response
+    return NextResponse.json({
+      content: data.content,
+      taskId: data.taskId || lindyRequest.taskId,
+      requiresDetails: data.requiresDetails,
+      schedulingDetails: data.schedulingDetails
+    });
+
+  } catch (error) {
+    console.error('Error:', error);
+    return NextResponse.json({ error: 'Failed to process message' }, { status: 500 });
   }
 } 
