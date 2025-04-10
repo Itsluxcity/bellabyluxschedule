@@ -7,18 +7,25 @@ import SuggestionBubbles from '@/components/SuggestionBubbles'
 import WelcomeOverlay from '@/components/WelcomeOverlay'
 import { Message } from '@/types'
 
+interface SchedulingDetails {
+  date: string;
+  time: string;
+  duration: string;
+  purpose: string;
+  participants: string[];
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [userName, setUserName] = useState('')
   const [showWelcome, setShowWelcome] = useState(true)
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
+  const [schedulingDetails, setSchedulingDetails] = useState<SchedulingDetails | null>(null)
 
   const handleNameSubmit = (name: string) => {
     setUserName(name)
     setShowWelcome(false)
-    
-    // Just add a welcome message, no Lindy request
     setMessages([
       { 
         id: Date.now().toString(),
@@ -33,61 +40,65 @@ export default function Home() {
   }
 
   const handleSendMessage = async (message: string) => {
-    if (!message.trim()) return
+    if (!message.trim() || isLoading) return
     
-    // Add user message to chat
-    const newMessages = [...messages, { 
+    setIsLoading(true)
+    const userMessage = { 
       id: Date.now().toString(),
       role: 'user' as const, 
       content: message 
-    }]
-    setMessages(newMessages)
-    setIsLoading(true)
+    }
     
     try {
-      // Format and send message to Lindy
-      const formattedMessage = formatMessageForLindy(message)
+      // Update messages first with user message
+      setMessages(prev => [...prev, userMessage])
+
+      // Send message to Lindy
       const response = await fetch('/api/lindy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          message: formattedMessage,
+          message,
           userName,
           taskId: currentTaskId
         })
       })
 
-      if (!response.ok) {
-        throw new Error('Failed to get response')
-      }
-
       const data = await response.json()
       
-      if (data.error) {
-        throw new Error(data.error)
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Failed to get response')
       }
 
-      // Store taskId if provided
+      // Update state with Lindy's response
       if (data.taskId) {
         setCurrentTaskId(data.taskId)
       }
       
-      // Add Lindy's response
-      setMessages(messages => [...messages, { 
-        id: Date.now().toString(),
-        role: 'assistant' as const, 
-        content: data.content
-      }])
+      if (data.schedulingDetails) {
+        setSchedulingDetails(data.schedulingDetails)
+      }
+
+      setMessages(prev => [
+        ...prev,
+        { 
+          id: Date.now().toString(),
+          role: 'assistant' as const, 
+          content: data.content
+        }
+      ])
     } catch (error) {
       console.error('Error sending message:', error)
-      // Add error message
-      setMessages(messages => [...messages, { 
-        id: Date.now().toString(),
-        role: 'assistant' as const, 
-        content: 'I apologize, but I encountered an error processing your request. Please try again.'
-      }])
+      setMessages(prev => [
+        ...prev,
+        { 
+          id: Date.now().toString(),
+          role: 'assistant' as const, 
+          content: 'I apologize, but I encountered an error processing your request. Please try again.'
+        }
+      ])
     } finally {
       setIsLoading(false)
     }

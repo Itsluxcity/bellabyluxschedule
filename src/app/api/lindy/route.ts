@@ -9,16 +9,9 @@ export async function POST(request: Request) {
     const body = await request.json();
     console.log('Received request:', body);
 
-    // Only proceed if we have a message to send
-    if (!body.message) {
-      console.log('No message in request, ignoring');
-      return NextResponse.json({ error: 'No message provided' }, { status: 400 });
-    }
-
-    console.log('Sending message to Lindy:', {
-      message: body.message,
-      taskId: body.taskId
-    });
+    // Format message for Lindy
+    const formattedMessage = `User speaking: ${body.userName}\nMessage: ${body.message}`;
+    console.log('Formatted message:', formattedMessage);
 
     // Send message to Lindy
     const lindyResponse = await fetch(LINDY_WEBHOOK_URL, {
@@ -28,8 +21,8 @@ export async function POST(request: Request) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        message: body.message,
-        taskId: body.taskId,
+        message: formattedMessage,
+        taskId: body.taskId || undefined,
         handleInSameTask: true
       })
     });
@@ -49,23 +42,19 @@ export async function POST(request: Request) {
       console.log('Parsed Lindy response:', data);
     } catch (e) {
       console.error('Failed to parse Lindy response:', e);
-      return NextResponse.json({ 
-        content: 'I received your message but encountered an error processing the response. Please try again.',
-        error: 'Invalid JSON response'
-      }, { status: 500 });
+      throw new Error('Failed to parse Lindy response');
     }
 
-    // Extract content and taskId from Lindy's response
-    const content = data.response?.content || data.content || 'No response content';
-    const taskId = data.taskId || data.response?.taskId;
+    // Return the complete response structure from Lindy
+    const response = {
+      content: data.content || 'No response content',
+      taskId: data.taskId,
+      requiresDetails: data.requiresDetails,
+      schedulingDetails: data.schedulingDetails
+    };
 
-    console.log('Sending to frontend:', { content, taskId });
-
-    // Return the response
-    return NextResponse.json({
-      content,
-      taskId
-    });
+    console.log('Sending to frontend:', response);
+    return NextResponse.json(response);
     
   } catch (error: any) {
     console.error('Full error details:', {
@@ -75,6 +64,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(
       { 
+        content: 'I apologize, but I encountered an error processing your request. Please try again.',
         error: 'Failed to process message', 
         details: error instanceof Error ? error.message : 'Unknown error'
       },
