@@ -12,6 +12,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false)
   const [userName, setUserName] = useState('')
   const [showWelcome, setShowWelcome] = useState(true)
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null)
 
   const handleNameSubmit = (name: string) => {
     setUserName(name)
@@ -50,7 +51,8 @@ export default function Home() {
         },
         body: JSON.stringify({
           message,
-          userName
+          userName,
+          taskId: currentTaskId
         })
       })
 
@@ -62,6 +64,11 @@ export default function Home() {
       
       if (data.error) {
         throw new Error(data.error)
+      }
+
+      // Store taskId if provided
+      if (data.taskId) {
+        setCurrentTaskId(data.taskId)
       }
       
       // Add Lindy's response

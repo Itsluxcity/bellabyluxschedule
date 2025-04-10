@@ -18,32 +18,30 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         message: body.message,
         sender: body.userName,
-        handleInSameTask: true // Add this to prevent duplicate tasks
+        handleInSameTask: true,
+        taskId: body.taskId || undefined // Pass taskId if it exists
       })
     });
 
     if (!lindyResponse.ok) {
+      console.error('Lindy response not OK:', await lindyResponse.text());
       throw new Error('Failed to get response from Lindy');
     }
 
     const data = await lindyResponse.json();
+    console.log('Lindy response:', data); // Debug log
     
-    // Check if we have a valid response from Lindy
-    if (!data || !data.content) {
-      throw new Error('Invalid response from Lindy');
-    }
-
-    // Return the response in the format our chat interface expects
+    // Return the response, preserving all fields from Lindy
     return NextResponse.json({
-      content: data.content,
-      needsMoreInfo: data.needsMoreInfo || false,
-      schedulingDetails: data.schedulingDetails || null
+      ...data,
+      content: data.content?.replace(/\\n/g, '\n') || 'No response content',
+      taskId: data.taskId // Pass taskId back to client
     });
     
   } catch (error) {
     console.error('Error processing message:', error);
     return NextResponse.json(
-      { error: 'Failed to process message' },
+      { error: 'Failed to process message', details: error.message },
       { status: 500 }
     );
   }
