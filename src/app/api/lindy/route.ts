@@ -17,7 +17,8 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         message: body.message,
-        sender: body.userName
+        sender: body.userName,
+        handleInSameTask: true // Add this to prevent duplicate tasks
       })
     });
 
@@ -26,7 +27,18 @@ export async function POST(request: Request) {
     }
 
     const data = await lindyResponse.json();
-    return NextResponse.json(data);
+    
+    // Check if we have a valid response from Lindy
+    if (!data || !data.content) {
+      throw new Error('Invalid response from Lindy');
+    }
+
+    // Return the response in the format our chat interface expects
+    return NextResponse.json({
+      content: data.content,
+      needsMoreInfo: data.needsMoreInfo || false,
+      schedulingDetails: data.schedulingDetails || null
+    });
     
   } catch (error) {
     console.error('Error processing message:', error);

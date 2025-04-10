@@ -60,11 +60,15 @@ export default function Home() {
 
       const data = await response.json()
       
+      if (data.error) {
+        throw new Error(data.error)
+      }
+      
       // Add Lindy's response
       setMessages(messages => [...messages, { 
         id: Date.now().toString(),
         role: 'assistant' as const, 
-        content: data.content || 'I apologize, but I encountered an error processing your request.'
+        content: data.content
       }])
     } catch (error) {
       console.error('Error sending message:', error)
