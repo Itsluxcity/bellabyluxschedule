@@ -62,10 +62,10 @@ export default function Home() {
         content: message
       }]);
 
-      // Format request for Lindy
+      // Format request for Lindy - ALWAYS include taskId
       const lindyRequest: LindyRequest = {
         content: message.trim(),
-        taskId: currentTaskId,
+        taskId: currentTaskId || '', // Empty string if no taskId
         requiresDetails: true,
         schedulingDetails: {
           date: '',
@@ -76,7 +76,7 @@ export default function Home() {
         }
       };
 
-      console.log('Sending request:', lindyRequest);
+      console.log('Sending request with taskId:', lindyRequest.taskId);
 
       // Send to Lindy
       const response = await fetch('/api/lindy', {
@@ -88,14 +88,17 @@ export default function Home() {
       });
 
       const data = await response.json();
-      console.log('Received response:', data);
+      console.log('Received response with taskId:', data.taskId);
       
       if (!response.ok) {
         throw new Error(data.error || 'Failed to get response');
       }
 
-      // Always update taskId with what Lindy sends back
-      setCurrentTaskId(data.taskId);
+      // Update taskId ONLY if Lindy sends a new one
+      if (data.taskId) {
+        console.log('Updating taskId to:', data.taskId);
+        setCurrentTaskId(data.taskId);
+      }
 
       // Add Lindy's response
       setMessages(prev => [...prev, {
