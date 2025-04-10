@@ -18,22 +18,24 @@ export default function Home() {
     setUserName(name)
     setShowWelcome(false)
     
-    // Add a welcome message from Bella
-    setTimeout(() => {
-      setMessages([
-        { 
-          id: Date.now().toString(),
-          role: 'assistant' as const, 
-          content: `Hi ${name}! I'm Bella, Christian Gates' scheduling assistant. How can I help you schedule something today?` 
-        }
-      ])
-    }, 500)
+    // Just add a welcome message, no Lindy request
+    setMessages([
+      { 
+        id: Date.now().toString(),
+        role: 'assistant' as const, 
+        content: `Hi ${name}! I'm Bella, Christian Gates' scheduling assistant. How can I help you schedule something today?` 
+      }
+    ])
+  }
+
+  const formatMessageForLindy = (message: string) => {
+    return `User speaking: ${userName}\nMessage: ${message}`
   }
 
   const handleSendMessage = async (message: string) => {
     if (!message.trim()) return
     
-    // Add user message
+    // Add user message to chat
     const newMessages = [...messages, { 
       id: Date.now().toString(),
       role: 'user' as const, 
@@ -43,14 +45,15 @@ export default function Home() {
     setIsLoading(true)
     
     try {
-      // Send message to Lindy
+      // Format and send message to Lindy
+      const formattedMessage = formatMessageForLindy(message)
       const response = await fetch('/api/lindy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          message,
+          message: formattedMessage,
           userName,
           taskId: currentTaskId
         })
