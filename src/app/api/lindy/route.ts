@@ -7,12 +7,7 @@ const LINDY_SECRET_KEY = 'ceddc1d497adf098fb3564709ebf7f01824ee74a2c3ba8492f43b2
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    
-    // If this is a response from Lindy (they send back handleInSameTask=true)
-    if (body.handleInSameTask === true && !body.message) {
-      console.log('Received Lindy response webhook, ignoring to prevent loops');
-      return NextResponse.json({ status: 'ok' });
-    }
+    console.log('Received request:', body);
 
     // Only proceed if we have a message to send
     if (!body.message) {
@@ -34,7 +29,8 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         message: body.message,
-        taskId: body.taskId || undefined
+        taskId: body.taskId,
+        handleInSameTask: true
       })
     });
 
@@ -50,6 +46,7 @@ export async function POST(request: Request) {
     let data;
     try {
       data = JSON.parse(responseText);
+      console.log('Parsed Lindy response:', data);
     } catch (e) {
       console.error('Failed to parse Lindy response:', e);
       return NextResponse.json({ 
@@ -58,10 +55,16 @@ export async function POST(request: Request) {
       }, { status: 500 });
     }
 
+    // Extract content and taskId from Lindy's response
+    const content = data.response?.content || data.content || 'No response content';
+    const taskId = data.taskId || data.response?.taskId;
+
+    console.log('Sending to frontend:', { content, taskId });
+
     // Return the response
     return NextResponse.json({
-      content: data.content || 'No response content',
-      taskId: data.taskId
+      content,
+      taskId
     });
     
   } catch (error: any) {
