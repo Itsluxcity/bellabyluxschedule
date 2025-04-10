@@ -23,7 +23,7 @@ export default function Home() {
         { 
           id: Date.now().toString(),
           role: 'assistant' as const, 
-          content: `Hello ${name}! I'm Bella, your personal AI assistant. How can I help you today?` 
+          content: `Hi ${name}! I'm Bella, Christian Gates' scheduling assistant. How can I help you schedule something today?` 
         }
       ])
     }, 500)
@@ -41,18 +41,42 @@ export default function Home() {
     setMessages(newMessages)
     setIsLoading(true)
     
-    // Simulate AI response
-    setTimeout(() => {
-      setMessages([
-        ...newMessages,
-        { 
-          id: (Date.now() + 1).toString(),
-          role: 'assistant' as const, 
-          content: `I'm processing your request: "${message}". This is a placeholder response.` 
-        }
-      ])
+    try {
+      // Send message to Lindy
+      const response = await fetch('/api/lindy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message,
+          userName
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to get response')
+      }
+
+      const data = await response.json()
+      
+      // Add Lindy's response
+      setMessages(messages => [...messages, { 
+        id: Date.now().toString(),
+        role: 'assistant' as const, 
+        content: data.content || 'I apologize, but I encountered an error processing your request.'
+      }])
+    } catch (error) {
+      console.error('Error sending message:', error)
+      // Add error message
+      setMessages(messages => [...messages, { 
+        id: Date.now().toString(),
+        role: 'assistant' as const, 
+        content: 'I apologize, but I encountered an error processing your request. Please try again.'
+      }])
+    } finally {
       setIsLoading(false)
-    }, 1500)
+    }
   }
 
   return (
