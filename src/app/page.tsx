@@ -50,7 +50,7 @@ export default function Home() {
     }
     
     try {
-      // Update messages first with user message
+      // Add user message first
       setMessages(prev => [...prev, userMessage])
 
       // Send message to Lindy
@@ -62,7 +62,7 @@ export default function Home() {
         body: JSON.stringify({
           message,
           userName,
-          taskId: currentTaskId
+          taskId: currentTaskId // Pass the current taskId if we have one
         })
       })
 
@@ -72,8 +72,8 @@ export default function Home() {
         throw new Error(data.error || 'Failed to get response')
       }
 
-      // Update state with Lindy's response
-      if (data.taskId) {
+      // Only update taskId if we get a new one and don't have one yet
+      if (data.taskId && !currentTaskId) {
         setCurrentTaskId(data.taskId)
       }
       
@@ -81,14 +81,19 @@ export default function Home() {
         setSchedulingDetails(data.schedulingDetails)
       }
 
-      setMessages(prev => [
-        ...prev,
-        { 
-          id: Date.now().toString(),
-          role: 'assistant' as const, 
-          content: data.content
-        }
-      ])
+      // Make sure we have content before adding the message
+      if (data.content) {
+        setMessages(prev => [
+          ...prev,
+          { 
+            id: Date.now().toString(),
+            role: 'assistant' as const, 
+            content: data.content
+          }
+        ])
+      } else {
+        throw new Error('No response content received')
+      }
     } catch (error) {
       console.error('Error sending message:', error)
       setMessages(prev => [

@@ -9,6 +9,11 @@ export async function POST(request: Request) {
     const body = await request.json();
     console.log('Received request:', body);
 
+    // If no message or userName, return error
+    if (!body.message || !body.userName) {
+      return NextResponse.json({ error: 'Message and userName are required' }, { status: 400 });
+    }
+
     // Format message for Lindy
     const formattedMessage = `User speaking: ${body.userName}\nMessage: ${body.message}`;
     console.log('Formatted message:', formattedMessage);
@@ -23,7 +28,8 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         message: formattedMessage,
         taskId: body.taskId || undefined,
-        handleInSameTask: true
+        handleInSameTask: true,
+        type: 'message'
       })
     });
 
@@ -31,7 +37,6 @@ export async function POST(request: Request) {
     console.log('Raw Lindy response:', responseText);
 
     if (!lindyResponse.ok) {
-      console.error('Lindy response not OK. Status:', lindyResponse.status);
       throw new Error(`Failed to get response from Lindy: ${responseText}`);
     }
 
@@ -45,23 +50,19 @@ export async function POST(request: Request) {
       throw new Error('Failed to parse Lindy response');
     }
 
-    // Return the complete response structure from Lindy
-    const response = {
-      content: data.content || 'No response content',
-      taskId: data.taskId,
-      requiresDetails: data.requiresDetails,
-      schedulingDetails: data.schedulingDetails
+    // Extract the actual response content and taskId
+    const responseData = {
+      content: data.content,
+      taskId: data.taskId || body.taskId, // Use existing taskId if no new one provided
+      requiresDetails: data.requiresDetails === true,
+      schedulingDetails: data.schedulingDetails || null
     };
 
-    console.log('Sending to frontend:', response);
-    return NextResponse.json(response);
+    console.log('Sending to frontend:', responseData);
+    return NextResponse.json(responseData);
     
   } catch (error: any) {
-    console.error('Full error details:', {
-      message: error.message,
-      stack: error.stack,
-      error
-    });
+    console.error('Full error details:', error);
     return NextResponse.json(
       { 
         content: 'I apologize, but I encountered an error processing your request. Please try again.',
