@@ -38,10 +38,13 @@ export async function POST(request: Request) {
       taskId: data.taskId // Pass taskId back to client
     });
     
-  } catch (error) {
+  } catch (error: any) { // Type error as any to access .message
     console.error('Error processing message:', error);
     return NextResponse.json(
-      { error: 'Failed to process message', details: error.message },
+      { 
+        error: 'Failed to process message', 
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
