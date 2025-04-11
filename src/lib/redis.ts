@@ -1,11 +1,17 @@
 import { Redis } from 'ioredis';
 
-// Create a Redis client
-// In production, use environment variables for connection details
+// Use production Redis URL or fallback to localhost
 const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 console.log('Connecting to Redis at:', redisUrl);
 
-export const redis = new Redis(redisUrl);
+// Create Redis client with retry strategy
+export const redis = new Redis(redisUrl, {
+  retryStrategy: (times) => {
+    const delay = Math.min(times * 50, 2000);
+    return delay;
+  },
+  maxRetriesPerRequest: 3
+});
 
 // Add error handling
 redis.on('error', (error) => {
