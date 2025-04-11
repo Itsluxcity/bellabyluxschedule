@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { setCallbackResponse } from '../route';
+import { setCallbackResponse, LindyResponse } from '../utils';
 
 export async function POST(request: Request) {
   try {
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     console.log('Received callback for thread:', threadId, 'with data:', data);
 
     // Store the response
-    setCallbackResponse(threadId, data);
+    setCallbackResponse(threadId, data as LindyResponse);
 
     // Return success
     return NextResponse.json({ value: "Message sent" });
