@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 
-const LINDY_WEBHOOK_URL = 'https://public.lindy.ai/api/v1/webhooks/lindy/6fdd874b-1e87-48ec-a401-f81546c4ce54';
-const LINDY_SECRET_KEY = 'ceddc1d497adf098fb3564709ebf7f01824ee74a2c3ba8492f43b2d06b3f8681';
+// Get configuration from environment variables
+const LINDY_WEBHOOK_URL = process.env.LINDY_WEBHOOK_URL || 'https://public.lindy.ai/api/v1/webhooks/lindy/6fdd874b-1e87-48ec-a401-f81546c4ce54';
+const LINDY_SECRET_KEY = process.env.LINDY_SECRET_KEY || 'ceddc1d497adf098fb3564709ebf7f01824ee74a2c3ba8492f43b2d06b3f8681';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+const CALLBACK_URL = `${BASE_URL}/api/lindy/callback`;
 
 interface LindyRequest {
   content: string;
-  taskId?: string;
+  callbackUrl: string;
   schedulingDetails?: {
     date?: string;
     time?: string;
@@ -13,91 +16,80 @@ interface LindyRequest {
     purpose?: string;
     participants?: string[];
   };
-}
-
-interface LindyResponse {
-  content: string;
-  taskId?: string;
-  followUpUrl?: string;
-  schedulingDetails?: {
-    date?: string;
-    time?: string;
-    duration?: string;
-    purpose?: string;
-    participants?: string[];
-  };
-}
-
-async function sendToLindy(request: LindyRequest, followUpUrl?: string): Promise<LindyResponse> {
-  // Use follow-up URL if provided, otherwise use initial webhook URL
-  const targetUrl = followUpUrl || LINDY_WEBHOOK_URL;
-  console.log('URL Selection:', {
-    usingFollowUpUrl: !!followUpUrl,
-    selectedUrl: targetUrl,
-    originalFollowUpUrl: followUpUrl,
-    webhookUrl: LINDY_WEBHOOK_URL
-  });
-  console.log('Request:', request);
-
-  const response = await fetch(targetUrl, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${LINDY_SECRET_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(request)
-  });
-
-  const responseText = await response.text();
-  console.log('Raw Lindy response:', responseText);
-
-  if (!response.ok) {
-    throw new Error(`Failed to get response from Lindy: ${responseText}`);
-  }
-
-  try {
-    const data = JSON.parse(responseText);
-    console.log('Response details:', {
-      hasFollowUpUrl: !!data.followUpUrl,
-      followUpUrl: data.followUpUrl,
-      taskId: data.taskId
-    });
-    return data;
-  } catch (e) {
-    throw new Error('Invalid JSON response from Lindy');
-  }
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    console.log('Received request body:', body);
+    console.log('Received request with content:', body.content);
 
-    // Validate request
+    // Ensure we have a message
     if (!body.content) {
       return NextResponse.json({ error: 'No content provided' }, { status: 400 });
     }
 
-    // Prepare request to Lindy
-    const lindyRequest: LindyRequest = {
-      content: body.content.trim(),
-      taskId: body.taskId, // Include taskId if provided
+    const lindyRequest = {
+      content: body.content,
+      callbackUrl: CALLBACK_URL,  // Add the callback URL
       schedulingDetails: body.schedulingDetails || {}
     };
 
-    // Send to Lindy using the follow-up URL if available
-    const data = await sendToLindy(lindyRequest, body.followUpUrl);
+    console.log('Sending to Lindy:', lindyRequest);
 
-    // Return response with both taskId and followUpUrl
+    // Send message to Lindy
+    const lindyResponse = await fetch(LINDY_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LINDY_SECRET_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(lindyRequest)
+    });
+
+    const responseText = await lindyResponse.text();
+    console.log('Raw Lindy response:', responseText);
+
+    if (!lindyResponse.ok) {
+      throw new Error(`Failed to get response from Lindy: ${responseText}`);
+    }
+
+    // Return processing status
     return NextResponse.json({
-      content: data.content,
-      taskId: data.taskId,
-      followUpUrl: data.followUpUrl,
-      schedulingDetails: data.schedulingDetails
+      status: 'processing',
+      message: 'Request sent to Lindy, awaiting response'
+    });
+    
+  } catch (error: any) {
+    console.error('Full error details:', error);
+    return NextResponse.json(
+      { 
+        error: 'Failed to process message', 
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// Handle callbacks from Lindy
+export async function callback(request: Request) {
+  try {
+    const body = await request.json();
+    console.log('Received callback from Lindy:', body);
+
+    // Validate the callback
+    if (!body.content) {
+      return NextResponse.json({ error: 'Invalid callback data' }, { status: 400 });
+    }
+
+    // Return the response to be sent to the client
+    return NextResponse.json({
+      content: body.content,
+      schedulingDetails: body.schedulingDetails
     });
 
   } catch (error) {
-    console.error('Error:', error);
-    return NextResponse.json({ error: 'Failed to process message' }, { status: 500 });
+    console.error('Error processing callback:', error);
+    return NextResponse.json({ error: 'Failed to process callback' }, { status: 500 });
   }
 } 
