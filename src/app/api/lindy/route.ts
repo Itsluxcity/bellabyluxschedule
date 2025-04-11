@@ -54,8 +54,9 @@ interface CallbackData extends Message {
 
 export async function POST(request: Request) {
   try {
+    console.log('=== LINDY API ROUTE STARTED ===');
     const body = await request.json();
-    console.log('Received request:', body);
+    console.log('Received request body:', JSON.stringify(body, null, 2));
 
     // Check if this is a callback from Lindy
     if (body.source === 'lindy' || body.isCallback) {
@@ -72,14 +73,17 @@ export async function POST(request: Request) {
 
     // Ensure we have required fields
     if (!messageWithSource.message) {
+      console.log('Error: No message provided');
       return NextResponse.json({ error: 'No message provided' }, { status: 400 });
     }
     
     // Generate or use provided threadId
     const threadId = messageWithSource.threadId || uuidv4();
     messageWithSource.threadId = threadId;
+    console.log('Using threadId:', threadId);
 
     // Get the existing task data for this thread
+    console.log('Attempting to get task data from Redis...');
     const taskData = await getTaskData(threadId);
     console.log('Retrieved task data:', taskData);
 
@@ -108,9 +112,11 @@ export async function POST(request: Request) {
       
       if (taskData.followUpUrl) {
         lindyRequest.callbackUrl = taskData.followUpUrl;
+        console.log('Using followUpUrl for callback:', taskData.followUpUrl);
       }
       if (taskData.conversationId) {
         lindyRequest.conversationId = taskData.conversationId;
+        console.log('Using conversationId for continuity:', taskData.conversationId);
       }
     }
 
@@ -126,10 +132,11 @@ export async function POST(request: Request) {
 
     console.log('Sending request to Lindy:', {
       url: targetUrl,
-      request: lindyRequest
+      request: JSON.stringify(lindyRequest, null, 2)
     });
 
     // Send request to Lindy
+    console.log('Making fetch request to Lindy...');
     const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
@@ -139,20 +146,26 @@ export async function POST(request: Request) {
       body: JSON.stringify(lindyRequest)
     });
 
+    console.log('Lindy response status:', response.status, response.statusText);
+    
     if (!response.ok) {
-      throw new Error(`Lindy API error: ${response.statusText}`);
+      const errorText = await response.text();
+      console.error('Lindy API error response:', errorText);
+      throw new Error(`Lindy API error: ${response.statusText} - ${errorText}`);
     }
 
     const lindyResponse = await response.json();
-    console.log('Lindy response:', lindyResponse);
+    console.log('Lindy response:', JSON.stringify(lindyResponse, null, 2));
 
     // Update task data with new information
     if (lindyResponse.taskId || lindyResponse.conversationId || lindyResponse.followUpUrl) {
+      console.log('Updating task data with new information...');
       await setTaskData(threadId, {
         conversationId: lindyResponse.conversationId || taskData?.conversationId,
         followUpUrl: lindyResponse.followUpUrl || taskData?.followUpUrl,
         lastMessageId: messageWithSource.messageId
       });
+      console.log('Task data updated successfully');
     }
 
     // If we have content in the immediate response, return it
@@ -174,6 +187,7 @@ export async function POST(request: Request) {
 
     // Store any new task data from callback
     if (callbackResponse.conversationId || callbackResponse.followUpUrl) {
+      console.log('Updating task data from callback...');
       await setTaskData(threadId, {
         followUpUrl: callbackResponse.followUpUrl,
         conversationId: callbackResponse.conversationId || taskData?.conversationId,
@@ -182,7 +196,8 @@ export async function POST(request: Request) {
       console.log('Updated task data from callback');
     }
 
-    console.log('Received callback response:', callbackResponse);
+    console.log('Received callback response:', JSON.stringify(callbackResponse, null, 2));
+    console.log('=== LINDY API ROUTE COMPLETED ===');
     return NextResponse.json({
       ...callbackResponse,
       threadId
