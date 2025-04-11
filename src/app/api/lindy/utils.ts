@@ -40,15 +40,25 @@ export function setCallbackResponse(threadId: string, response: LindyResponse) {
   console.log('Stored callback response for thread:', threadId, response);
 }
 
-export async function waitForCallback(threadId: string, timeout: number = 30000): Promise<LindyResponse | null> {
+export async function waitForCallback(threadId: string, timeout: number = 300000): Promise<LindyResponse | null> {
+  console.log(`Starting to wait for callback for thread ${threadId}. Will wait for ${timeout/1000} seconds.`);
   const startTime = Date.now();
+  let pollCount = 0;
+  
   while (Date.now() - startTime < timeout) {
+    pollCount++;
     const response = callbackResponses.get(threadId);
     if (response) {
+      console.log(`Found callback response for thread ${threadId} after ${pollCount} polls:`, response);
       callbackResponses.delete(threadId); // Clean up
       return response;
     }
+    if (pollCount % 50 === 0) { // Log every ~5 seconds
+      console.log(`Still waiting for callback for thread ${threadId}. Polled ${pollCount} times. Elapsed: ${(Date.now() - startTime)/1000}s`);
+    }
     await new Promise(resolve => setTimeout(resolve, 100)); // Poll every 100ms
   }
+  
+  console.log(`Timeout reached for thread ${threadId} after ${timeout/1000} seconds and ${pollCount} polls.`);
   return null;
 } 
