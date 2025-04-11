@@ -60,6 +60,13 @@ export async function POST(request: Request) {
 
     // If we have existing task data, use it for continuity
     if (taskData) {
+      console.log('Using existing task data for continuity:', {
+        threadId: messageWithSource.threadId,
+        existingTaskId: taskData.taskId,
+        existingConversationId: taskData.conversationId,
+        existingFollowUpUrl: taskData.followUpUrl
+      });
+      
       if (taskData.followUpUrl) {
         lindyRequest.callbackUrl = taskData.followUpUrl;
       }
@@ -71,8 +78,23 @@ export async function POST(request: Request) {
       }
     }
 
+    // Determine which URL to use for the request
+    let targetUrl = LINDY_WEBHOOK_URL;
+    if (taskData?.followUpUrl) {
+      targetUrl = taskData.followUpUrl;
+      console.log('Using followUpUrl for request:', targetUrl);
+    } else if (taskData?.conversationId) {
+      targetUrl = `${LINDY_WEBHOOK_URL}?conversationId=${taskData.conversationId}`;
+      console.log('Using conversationId in URL:', targetUrl);
+    }
+
+    console.log('Sending request to Lindy:', {
+      url: targetUrl,
+      request: lindyRequest
+    });
+
     // Send request to Lindy
-    const response = await fetch(LINDY_WEBHOOK_URL, {
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
