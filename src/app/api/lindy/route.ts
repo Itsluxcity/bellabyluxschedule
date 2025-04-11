@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { 
   LindyRequest, 
-  LindyResponse, 
+  LindyResponse
+} from './utils';
+import { 
   getLastTaskId, 
   setLastTaskId, 
   waitForCallback 
-} from './utils';
+} from '@/lib/db';
 
 // Get configuration from environment variables
 const LINDY_WEBHOOK_URL = 'https://public.lindy.ai/api/v1/webhooks/lindy/6fdd874b-1e87-48ec-a401-f81546c4ce54';
@@ -27,7 +29,7 @@ export async function POST(request: Request) {
     }
 
     // Get the last task ID for this thread
-    const lastTaskId = getLastTaskId(body.threadId);
+    const lastTaskId = await getLastTaskId(body.threadId);
     console.log('Last task ID:', lastTaskId);
 
     // Format the request exactly as Lindy expects
@@ -67,7 +69,12 @@ export async function POST(request: Request) {
       console.log('Initial response not OK, waiting for callback...');
       const callbackResponse = await waitForCallback(body.threadId);
       if (callbackResponse) {
-        return NextResponse.json(callbackResponse);
+        return NextResponse.json({
+          success: true,
+          message: callbackResponse.content,
+          taskId: callbackResponse.taskId,
+          schedulingDetails: callbackResponse.schedulingDetails
+        });
       }
       throw new Error(`Failed to get response from Lindy: ${responseText}`);
     }
@@ -82,14 +89,19 @@ export async function POST(request: Request) {
       console.log('Failed to parse initial response, waiting for callback...');
       const callbackResponse = await waitForCallback(body.threadId);
       if (callbackResponse) {
-        return NextResponse.json(callbackResponse);
+        return NextResponse.json({
+          success: true,
+          message: callbackResponse.content,
+          taskId: callbackResponse.taskId,
+          schedulingDetails: callbackResponse.schedulingDetails
+        });
       }
       throw new Error(`Failed to parse Lindy response: ${responseText}`);
     }
 
     // Store the task ID for this thread if one was returned
     if (data.taskId) {
-      setLastTaskId(body.threadId, data.taskId);
+      await setLastTaskId(body.threadId, data.taskId);
       console.log('Stored task ID:', data.taskId);
     }
 
@@ -122,7 +134,8 @@ export async function POST(request: Request) {
     console.log('No response received from any source');
     return NextResponse.json({ 
       error: 'No response received', 
-      details: 'Lindy did not provide a response in time'
+      details: 'Lindy did not provide a response in time',
+      status: 'timeout'
     }, { status: 504 });
     
   } catch (error: any) {
