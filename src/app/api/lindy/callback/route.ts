@@ -23,11 +23,19 @@ export async function POST(request: Request) {
 
     // Format the response data
     const responseData = {
-      content: body.content,
-      schedulingDetails: body.schedulingDetails || null
+      content: body.content.trim(), // Ensure content is trimmed
+      schedulingDetails: body.schedulingDetails ? {
+        date: body.schedulingDetails.date || null,
+        time: body.schedulingDetails.time || null,
+        duration: body.schedulingDetails.duration || null,
+        purpose: body.schedulingDetails.purpose || null,
+        participants: Array.isArray(body.schedulingDetails.participants) 
+          ? body.schedulingDetails.participants 
+          : []
+      } : null
     };
 
-    console.log('Resolving callback with data:', responseData);
+    console.log('Resolving callback with formatted data:', responseData);
 
     // Resolve the callback for this thread
     resolveCallback(threadId, responseData);

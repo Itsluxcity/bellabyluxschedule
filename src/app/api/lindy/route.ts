@@ -42,8 +42,9 @@ export async function POST(request: Request) {
       schedulingDetails: body.schedulingDetails || {}
     };
 
-    // If we have a previous task ID, include it
+    // Always include taskId if we have one from a previous message
     if (lastTaskId) {
+      console.log('Using existing taskId:', lastTaskId);
       lindyRequest.taskId = lastTaskId;
     }
 
@@ -69,7 +70,9 @@ export async function POST(request: Request) {
     const responseData = await lindyResponse.json();
     console.log('Lindy initial response:', responseData);
     
+    // Store the task ID from the response if we get one
     if (responseData.taskId) {
+      console.log('Setting new taskId:', responseData.taskId);
       setLastTaskId(body.threadId, responseData.taskId);
     }
 
@@ -86,12 +89,22 @@ export async function POST(request: Request) {
       ]);
 
       console.log('Received callback data:', callbackData);
-      return NextResponse.json(callbackData);
-    } catch (timeoutError) {
-      console.error('Callback timeout:', timeoutError);
+      
+      // Ensure we have the expected format
+      if (typeof callbackData.content !== 'string') {
+        console.error('Invalid callback content format:', callbackData);
+        throw new Error('Invalid response format from Lindy');
+      }
+
+      return NextResponse.json({
+        content: callbackData.content,
+        schedulingDetails: callbackData.schedulingDetails || null
+      });
+    } catch (error: any) {
+      console.error('Callback timeout or format error:', error);
       return NextResponse.json({ 
-        error: 'Timeout waiting for Lindy response',
-        details: 'The request was sent successfully, but no response was received in time.'
+        error: 'Error receiving Lindy response',
+        details: error.message || 'Unknown error'
       }, { status: 504 });
     }
     
