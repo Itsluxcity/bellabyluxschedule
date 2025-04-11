@@ -85,70 +85,79 @@ export default function Home() {
 
       // Start polling for response
       let attempts = 0;
-      const maxAttempts = 30; // 30 attempts * 3 seconds = 90 seconds (1.5 minutes) max wait
+      const maxAttempts = 60; // 60 attempts * 5 seconds = 300 seconds (5 minutes) max wait
       let response = null;
+      let data = null;
 
       while (attempts < maxAttempts) {
         console.log(`Attempt ${attempts + 1} of ${maxAttempts}`);
-        response = await fetch('/api/lindy', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            message: formattedMessage,
-            threadId: 'bella-scheduling',
-            schedulingDetails: schedulingDetails
-          }),
-        });
-
-        const data = await response.json();
         
-        // If we got a valid response, use it
-        if (response.ok && data.content) {
-          // Remove thinking message
-          setMessages(prev => prev.filter(msg => msg.id !== 'thinking'));
+        try {
+          // First wait 5 seconds
+          await new Promise(resolve => setTimeout(resolve, 5000));
 
-          // Add Bella's response
-          const bellaMessage: Message = {
-            id: Date.now().toString(),
-            role: 'assistant',
-            content: data.content,
-            timestamp: new Date().toISOString()
-          };
-          setMessages(prev => [...prev, bellaMessage]);
+          // Then make the request
+          response = await fetch('/api/lindy', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              message: formattedMessage,
+              threadId: 'bella-scheduling',
+              schedulingDetails: schedulingDetails
+            }),
+          });
 
-          // Update scheduling details if provided
-          if (data.schedulingDetails) {
-            setSchedulingDetails(data.schedulingDetails);
+          data = await response.json();
+          
+          // If we got a valid response with content, use it
+          if (response.ok && data.content) {
+            // Remove thinking message
+            setMessages(prev => prev.filter(msg => msg.id !== 'thinking'));
+
+            // Add Bella's response
+            const bellaMessage: Message = {
+              id: Date.now().toString(),
+              role: 'assistant',
+              content: data.content,
+              timestamp: new Date().toISOString()
+            };
+            setMessages(prev => [...prev, bellaMessage]);
+
+            // Update scheduling details if provided
+            if (data.schedulingDetails) {
+              setSchedulingDetails(data.schedulingDetails);
+            }
+
+            // If more details are required, show the scheduling form
+            if (data.requiresDetails) {
+              setShowSchedulingForm(true);
+            }
+
+            return;
           }
 
-          // If more details are required, show the scheduling form
-          if (data.requiresDetails) {
-            setShowSchedulingForm(true);
+          // If we got an error that's not a timeout, break
+          if (response.status !== 504) {
+            break;
           }
 
-          return;
+          attempts++;
+        } catch (error) {
+          console.log(`Attempt ${attempts + 1} failed:`, error);
+          attempts++;
         }
-
-        // If we got an error that's not a timeout, break
-        if (response.status !== 504) {
-          break;
-        }
-
-        // Wait 3 seconds before trying again
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        attempts++;
       }
 
       // If we get here, we've timed out or got an error
       setMessages(prev => prev.filter(msg => msg.id !== 'thinking'));
       
-      const errorDetails = response ? await response.json() : { error: 'Timeout waiting for response' };
+      const errorDetails = data || { error: 'Timeout waiting for response after 5 minutes' };
       const errorMessage: Message = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: `I apologize, but I encountered an issue: ${errorDetails.error || 'No response received'}. Please try again.`,
+        content: `I apologize, but I encountered an issue: ${errorDetails.error || 'No response received after 5 minutes of trying'}. Please try again.`,
         timestamp: new Date().toISOString()
       };
       setMessages(prev => [...prev, errorMessage]);
