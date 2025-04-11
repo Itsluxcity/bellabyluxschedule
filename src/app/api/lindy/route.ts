@@ -75,6 +75,7 @@ export async function POST(request: Request) {
 
     // Get the last task ID for this thread
     const lastTaskId = getLastTaskId(body.threadId);
+    console.log('Last task ID:', lastTaskId);
 
     // Format the request exactly as Lindy expects
     const lindyRequest: LindyRequest = {
@@ -88,7 +89,7 @@ export async function POST(request: Request) {
       lindyRequest.schedulingDetails = body.schedulingDetails;
     }
 
-    console.log('Sending to Lindy:', lindyRequest);
+    console.log('Sending to Lindy:', JSON.stringify(lindyRequest, null, 2));
 
     // Send message to Lindy
     const lindyResponse = await fetch(LINDY_WEBHOOK_URL, {
@@ -102,6 +103,8 @@ export async function POST(request: Request) {
 
     const responseText = await lindyResponse.text();
     console.log('Raw Lindy response:', responseText);
+    console.log('Response status:', lindyResponse.status);
+    console.log('Response headers:', Object.fromEntries(lindyResponse.headers.entries()));
 
     if (!lindyResponse.ok) {
       throw new Error(`Failed to get response from Lindy: ${responseText}`);
@@ -111,23 +114,27 @@ export async function POST(request: Request) {
     let data: LindyResponse;
     try {
       data = JSON.parse(responseText);
-      console.log('Parsed Lindy response:', data);
+      console.log('Parsed Lindy response:', JSON.stringify(data, null, 2));
     } catch (e) {
       console.error('Failed to parse Lindy response:', e);
-      throw new Error('Failed to parse Lindy response');
+      throw new Error(`Failed to parse Lindy response: ${responseText}`);
     }
 
     // Store the task ID for this thread if one was returned
     if (data.taskId) {
       setLastTaskId(body.threadId, data.taskId);
+      console.log('Stored task ID:', data.taskId);
     }
 
     // Wait for callback response
+    console.log('Waiting for callback response...');
     const callbackResponse = await waitForCallback(body.threadId);
     if (!callbackResponse) {
+      console.log('Callback timeout - no response received');
       return NextResponse.json({ error: 'Timeout waiting for response' }, { status: 504 });
     }
 
+    console.log('Received callback response:', JSON.stringify(callbackResponse, null, 2));
     return NextResponse.json(callbackResponse);
     
   } catch (error: any) {
@@ -135,7 +142,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { 
         error: 'Failed to process message', 
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
       },
       { status: 500 }
     );
