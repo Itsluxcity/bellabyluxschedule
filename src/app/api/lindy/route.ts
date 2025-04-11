@@ -18,6 +18,7 @@ interface LindyRequest {
 interface LindyResponse {
   content: string;
   taskId?: string;
+  followUpUrl?: string;
   schedulingDetails?: {
     date?: string;
     time?: string;
@@ -27,10 +28,18 @@ interface LindyResponse {
   };
 }
 
-async function sendToLindy(request: LindyRequest): Promise<LindyResponse> {
-  console.log('Sending to Lindy:', request);
+async function sendToLindy(request: LindyRequest, followUpUrl?: string): Promise<LindyResponse> {
+  // Use follow-up URL if provided, otherwise use initial webhook URL
+  const targetUrl = followUpUrl || LINDY_WEBHOOK_URL;
+  console.log('URL Selection:', {
+    usingFollowUpUrl: !!followUpUrl,
+    selectedUrl: targetUrl,
+    originalFollowUpUrl: followUpUrl,
+    webhookUrl: LINDY_WEBHOOK_URL
+  });
+  console.log('Request:', request);
 
-  const response = await fetch(LINDY_WEBHOOK_URL, {
+  const response = await fetch(targetUrl, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${LINDY_SECRET_KEY}`,
@@ -47,7 +56,13 @@ async function sendToLindy(request: LindyRequest): Promise<LindyResponse> {
   }
 
   try {
-    return JSON.parse(responseText);
+    const data = JSON.parse(responseText);
+    console.log('Response details:', {
+      hasFollowUpUrl: !!data.followUpUrl,
+      followUpUrl: data.followUpUrl,
+      taskId: data.taskId
+    });
+    return data;
   } catch (e) {
     throw new Error('Invalid JSON response from Lindy');
   }
@@ -56,34 +71,29 @@ async function sendToLindy(request: LindyRequest): Promise<LindyResponse> {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    console.log('Received request:', body);
-    
+    console.log('Received request body:', body);
+
     // Validate request
-    if (!body.content || typeof body.content !== 'string') {
-      return NextResponse.json({ error: 'Invalid or missing content' }, { status: 400 });
+    if (!body.content) {
+      return NextResponse.json({ error: 'No content provided' }, { status: 400 });
     }
 
-    // Format request for Lindy - ALWAYS include taskId
+    // Prepare request to Lindy
     const lindyRequest: LindyRequest = {
       content: body.content.trim(),
-      taskId: body.taskId || '', // Empty string if no taskId
-      schedulingDetails: {
-        date: '',
-        time: '',
-        duration: '',
-        purpose: '',
-        participants: body.participants || []
-      }
+      taskId: body.taskId, // Include taskId if provided
+      schedulingDetails: body.schedulingDetails || {}
     };
 
-    // Send to Lindy using our ONE implementation
-    const data = await sendToLindy(lindyRequest);
+    // Send to Lindy using the follow-up URL if available
+    const data = await sendToLindy(lindyRequest, body.followUpUrl);
 
-    // Return response with preserved taskId
+    // Return response with both taskId and followUpUrl
     return NextResponse.json({
       content: data.content,
-      taskId: data.taskId || lindyRequest.taskId, // Keep existing if no new one
-      schedulingDetails: data.schedulingDetails || lindyRequest.schedulingDetails
+      taskId: data.taskId,
+      followUpUrl: data.followUpUrl,
+      schedulingDetails: data.schedulingDetails
     });
 
   } catch (error) {
