@@ -90,7 +90,8 @@ export default function Home() {
         throw new Error(data.error);
       }
 
-      if (!data.content) {
+      const responseContent = data.content || data.message;
+      if (!responseContent) {
         throw new Error('No response content received');
       }
 
@@ -98,7 +99,7 @@ export default function Home() {
       setMessages(prev => [...prev, { 
         id: Date.now().toString(),
         role: 'assistant', 
-        content: data.content 
+        content: responseContent
       }]);
 
       // Update scheduling details if provided

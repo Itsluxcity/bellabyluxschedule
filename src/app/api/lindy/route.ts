@@ -7,20 +7,6 @@ const LINDY_SECRET_KEY = process.env.LINDY_SECRET_KEY || 'ceddc1d497adf098fb3564
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 const CALLBACK_URL = `${BASE_URL}/api/lindy/callback`;
 
-interface LindyRequest {
-  content: string;
-  callbackUrl: string;
-  taskId?: string;
-  handleInSameTask: boolean;
-  schedulingDetails?: {
-    date?: string;
-    time?: string;
-    duration?: string;
-    purpose?: string;
-    participants?: string[];
-  };
-}
-
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -35,18 +21,14 @@ export async function POST(request: Request) {
     createThread(body.threadId);
     const lastTaskId = getLastTaskId(body.threadId);
 
-    const lindyRequest: LindyRequest = {
-      content: body.content,
+    // Format the request exactly as Lindy expects
+    const lindyRequest = {
+      message: body.content,
       callbackUrl: `${CALLBACK_URL}?threadId=${body.threadId}`,
+      taskId: lastTaskId || undefined,
       handleInSameTask: true,
-      schedulingDetails: body.schedulingDetails || {}
+      schedulingDetails: body.schedulingDetails || undefined
     };
-
-    // Always include taskId if we have one from a previous message
-    if (lastTaskId) {
-      console.log('Using existing taskId:', lastTaskId);
-      lindyRequest.taskId = lastTaskId;
-    }
 
     console.log('Sending to Lindy:', lindyRequest);
 
@@ -60,17 +42,23 @@ export async function POST(request: Request) {
       body: JSON.stringify(lindyRequest)
     });
 
+    const responseText = await lindyResponse.text();
+    console.log('Raw Lindy response:', responseText);
+
     if (!lindyResponse.ok) {
-      const errorText = await lindyResponse.text();
-      console.error('Lindy API error:', errorText);
-      throw new Error(`Failed to get response from Lindy: ${errorText}`);
+      throw new Error(`Failed to get response from Lindy: ${responseText}`);
     }
 
-    // Parse the response to get the task ID
-    const responseData = await lindyResponse.json();
-    console.log('Lindy initial response:', responseData);
-    
-    // Store the task ID from the response if we get one
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+      console.log('Parsed Lindy response:', responseData);
+    } catch (e) {
+      console.error('Failed to parse Lindy response:', e);
+      throw new Error('Invalid JSON response from Lindy');
+    }
+
+    // Store the task ID if we get one
     if (responseData.taskId) {
       console.log('Setting new taskId:', responseData.taskId);
       setLastTaskId(body.threadId, responseData.taskId);
@@ -79,7 +67,7 @@ export async function POST(request: Request) {
     try {
       // Wait for callback response with a timeout
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Callback timeout')), 30000); // 30 second timeout
+        setTimeout(() => reject(new Error('Callback timeout')), 30000);
       });
 
       // Wait for either the callback or timeout
@@ -89,19 +77,15 @@ export async function POST(request: Request) {
       ]);
 
       console.log('Received callback data:', callbackData);
-      
-      // Ensure we have the expected format
-      if (typeof callbackData.content !== 'string') {
-        console.error('Invalid callback content format:', callbackData);
-        throw new Error('Invalid response format from Lindy');
-      }
 
+      // Return the response
       return NextResponse.json({
-        content: callbackData.content,
+        content: callbackData.message || callbackData.content,
         schedulingDetails: callbackData.schedulingDetails || null
       });
+
     } catch (error: any) {
-      console.error('Callback timeout or format error:', error);
+      console.error('Callback error:', error);
       return NextResponse.json({ 
         error: 'Error receiving Lindy response',
         details: error.message || 'Unknown error'

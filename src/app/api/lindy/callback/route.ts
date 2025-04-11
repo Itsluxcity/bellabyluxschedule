@@ -15,15 +15,15 @@ export async function POST(request: Request) {
     const body = await request.json();
     console.log('Received callback from Lindy for thread:', threadId, body);
 
-    // Validate the callback
-    if (!body.content) {
+    // Validate the callback data
+    if (!body.message && !body.content) {
       console.error('Invalid callback data received:', body);
       return NextResponse.json({ error: 'Invalid callback data' }, { status: 400 });
     }
 
     // Format the response data
     const responseData = {
-      content: body.content.trim(), // Ensure content is trimmed
+      message: body.message || body.content,
       schedulingDetails: body.schedulingDetails ? {
         date: body.schedulingDetails.date || null,
         time: body.schedulingDetails.time || null,
