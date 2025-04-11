@@ -54,12 +54,21 @@ export async function POST(request: Request) {
       body: JSON.stringify(lindyRequest)
     });
 
+    // Wait for 2 seconds to give Lindy time to process
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
     const responseText = await lindyResponse.text();
     console.log('Raw Lindy response:', responseText);
     console.log('Response status:', lindyResponse.status);
     console.log('Response headers:', Object.fromEntries(lindyResponse.headers.entries()));
 
     if (!lindyResponse.ok) {
+      // Wait for callback response even if initial response fails
+      console.log('Initial response not OK, waiting for callback...');
+      const callbackResponse = await waitForCallback(body.threadId);
+      if (callbackResponse) {
+        return NextResponse.json(callbackResponse);
+      }
       throw new Error(`Failed to get response from Lindy: ${responseText}`);
     }
 
@@ -69,7 +78,12 @@ export async function POST(request: Request) {
       data = JSON.parse(responseText);
       console.log('Parsed Lindy response:', JSON.stringify(data, null, 2));
     } catch (e) {
-      console.error('Failed to parse Lindy response:', e);
+      // If parsing fails, wait for callback
+      console.log('Failed to parse initial response, waiting for callback...');
+      const callbackResponse = await waitForCallback(body.threadId);
+      if (callbackResponse) {
+        return NextResponse.json(callbackResponse);
+      }
       throw new Error(`Failed to parse Lindy response: ${responseText}`);
     }
 
@@ -79,22 +93,26 @@ export async function POST(request: Request) {
       console.log('Stored task ID:', data.taskId);
     }
 
-    // If we have content in the immediate response, return it
+    // Always wait for callback response
+    console.log('Waiting for callback response...');
+    const callbackResponse = await waitForCallback(body.threadId);
+    if (callbackResponse) {
+      console.log('Received callback response:', JSON.stringify(callbackResponse, null, 2));
+      return NextResponse.json(callbackResponse);
+    }
+
+    // If no callback received and we have content in the initial response, use that
     if (data.content) {
-      console.log('Returning immediate response:', data.content);
+      console.log('No callback received, using initial response:', data.content);
       return NextResponse.json(data);
     }
 
-    // Otherwise wait for callback response
-    console.log('No immediate content, waiting for callback response...');
-    const callbackResponse = await waitForCallback(body.threadId);
-    if (!callbackResponse) {
-      console.log('Callback timeout - no response received');
-      return NextResponse.json({ error: 'Timeout waiting for response' }, { status: 504 });
-    }
-
-    console.log('Received callback response:', JSON.stringify(callbackResponse, null, 2));
-    return NextResponse.json(callbackResponse);
+    // If we get here, we have no response at all
+    console.log('No response received from any source');
+    return NextResponse.json({ 
+      error: 'No response received', 
+      details: 'Lindy did not provide a response in time'
+    }, { status: 504 });
     
   } catch (error: any) {
     console.error('Full error details:', error);
