@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { 
   LindyRequest, 
   LindyResponse, 
-  getLastTaskId, 
-  setLastTaskId, 
+  getTaskData,
+  setTaskData,
   waitForCallback 
 } from './utils';
 
@@ -26,16 +26,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No threadId provided' }, { status: 400 });
     }
 
-    // Get the last task ID for this thread
-    const lastTaskId = getLastTaskId(body.threadId);
-    console.log('Last task ID:', lastTaskId);
+    // Get the existing task data for this thread
+    const taskData = getTaskData(body.threadId);
+    console.log('Retrieved task data:', taskData);
+
+    // Determine which URL to use
+    let targetUrl = LINDY_WEBHOOK_URL;
+    if (taskData?.followUpUrl) {
+      targetUrl = taskData.followUpUrl;
+      console.log('Using followUpUrl:', targetUrl);
+    } else if (taskData?.conversationId) {
+      targetUrl = `${LINDY_WEBHOOK_URL}?conversationId=${taskData.conversationId}`;
+      console.log('Using conversationId URL:', targetUrl);
+    }
 
     // Format the request exactly as Lindy expects
     const lindyRequest: LindyRequest = {
       message: body.message,
       callbackUrl: `${CALLBACK_URL}?threadId=${body.threadId}`,
-      taskId: lastTaskId || undefined,
-      handleInSameTask: true
+      taskId: taskData?.taskId,
+      handleInSameTask: true,
+      conversationId: taskData?.conversationId
     };
 
     if (body.schedulingDetails) {
@@ -45,7 +56,7 @@ export async function POST(request: Request) {
     console.log('Sending to Lindy:', JSON.stringify(lindyRequest, null, 2));
 
     // Send message to Lindy
-    const lindyResponse = await fetch(LINDY_WEBHOOK_URL, {
+    const lindyResponse = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${LINDY_SECRET_KEY}`,
@@ -54,21 +65,12 @@ export async function POST(request: Request) {
       body: JSON.stringify(lindyRequest)
     });
 
-    // Wait for 2 seconds to give Lindy time to process
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
     const responseText = await lindyResponse.text();
     console.log('Raw Lindy response:', responseText);
     console.log('Response status:', lindyResponse.status);
     console.log('Response headers:', Object.fromEntries(lindyResponse.headers.entries()));
 
     if (!lindyResponse.ok) {
-      // Wait for callback response even if initial response fails
-      console.log('Initial response not OK, waiting for callback...');
-      const callbackResponse = await waitForCallback(body.threadId);
-      if (callbackResponse) {
-        return NextResponse.json(callbackResponse);
-      }
       throw new Error(`Failed to get response from Lindy: ${responseText}`);
     }
 
@@ -78,41 +80,46 @@ export async function POST(request: Request) {
       data = JSON.parse(responseText);
       console.log('Parsed Lindy response:', JSON.stringify(data, null, 2));
     } catch (e) {
-      // If parsing fails, wait for callback
-      console.log('Failed to parse initial response, waiting for callback...');
-      const callbackResponse = await waitForCallback(body.threadId);
-      if (callbackResponse) {
-        return NextResponse.json(callbackResponse);
-      }
+      console.error('Failed to parse Lindy response:', e);
       throw new Error(`Failed to parse Lindy response: ${responseText}`);
     }
 
-    // Store the task ID for this thread if one was returned
-    if (data.taskId) {
-      setLastTaskId(body.threadId, data.taskId);
-      console.log('Stored task ID:', data.taskId);
+    // Store the task data if we got any
+    if (data.taskId || data.followUpUrl || data.conversationId) {
+      setTaskData(body.threadId, {
+        taskId: data.taskId || taskData?.taskId || '',
+        followUpUrl: data.followUpUrl,
+        conversationId: data.conversationId || taskData?.conversationId
+      });
+      console.log('Updated task data');
     }
 
-    // Always wait for callback response
-    console.log('Waiting for callback response...');
-    const callbackResponse = await waitForCallback(body.threadId);
-    if (callbackResponse) {
-      console.log('Received callback response:', JSON.stringify(callbackResponse, null, 2));
-      return NextResponse.json(callbackResponse);
-    }
-
-    // If no callback received and we have content in the initial response, use that
+    // If we have content in the immediate response, return it
     if (data.content) {
-      console.log('No callback received, using initial response:', data.content);
+      console.log('Returning immediate response:', data.content);
       return NextResponse.json(data);
     }
 
-    // If we get here, we have no response at all
-    console.log('No response received from any source');
-    return NextResponse.json({ 
-      error: 'No response received', 
-      details: 'Lindy did not provide a response in time'
-    }, { status: 504 });
+    // Otherwise wait for callback response
+    console.log('No immediate content, waiting for callback response...');
+    const callbackResponse = await waitForCallback(body.threadId);
+    if (!callbackResponse) {
+      console.log('Callback timeout - no response received');
+      return NextResponse.json({ error: 'Timeout waiting for response' }, { status: 504 });
+    }
+
+    // Store any new task data from callback
+    if (callbackResponse.taskId || callbackResponse.followUpUrl || callbackResponse.conversationId) {
+      setTaskData(body.threadId, {
+        taskId: callbackResponse.taskId || taskData?.taskId || '',
+        followUpUrl: callbackResponse.followUpUrl,
+        conversationId: callbackResponse.conversationId || taskData?.conversationId
+      });
+      console.log('Updated task data from callback');
+    }
+
+    console.log('Received callback response:', JSON.stringify(callbackResponse, null, 2));
+    return NextResponse.json(callbackResponse);
     
   } catch (error: any) {
     console.error('Full error details:', error);

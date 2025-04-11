@@ -12,6 +12,7 @@ export interface LindyRequest {
   handleInSameTask: boolean;
   schedulingDetails?: SchedulingDetails;
   callbackUrl: string;
+  conversationId?: string;
 }
 
 export interface LindyResponse {
@@ -19,17 +20,20 @@ export interface LindyResponse {
   taskId?: string;
   requiresDetails?: boolean;
   schedulingDetails?: SchedulingDetails;
+  followUpUrl?: string;
+  conversationId?: string;
 }
 
-// Store task IDs for each thread
-const taskIds = new Map<string, string>();
+// Store task IDs and followUpUrls for each thread
+const taskData = new Map<string, { taskId: string; followUpUrl?: string; conversationId?: string }>();
 
-export function setLastTaskId(threadId: string, taskId: string) {
-  taskIds.set(threadId, taskId);
+export function setTaskData(threadId: string, data: { taskId: string; followUpUrl?: string; conversationId?: string }) {
+  taskData.set(threadId, data);
+  console.log('Stored task data for thread:', threadId, data);
 }
 
-export function getLastTaskId(threadId: string): string | undefined {
-  return taskIds.get(threadId);
+export function getTaskData(threadId: string) {
+  return taskData.get(threadId);
 }
 
 // Store callback responses
