@@ -7,8 +7,8 @@ const TASK_PREFIX = 'lindy:task:';
 const TTL = 300; // 5 minutes in seconds
 
 /**
- * Store callback data in Redis
- * @param threadId The thread ID to associate with the callback
+ * Store callback data for a thread
+ * @param threadId The thread ID to store callback data for
  * @param data The callback data to store
  */
 export async function setCallbackData(threadId: string, data: any): Promise<void> {
@@ -17,8 +17,8 @@ export async function setCallbackData(threadId: string, data: any): Promise<void
 }
 
 /**
- * Get callback data from Redis
- * @param threadId The thread ID to retrieve callback data for
+ * Get callback data for a thread
+ * @param threadId The thread ID to get callback data for
  */
 export async function getCallbackData(threadId: string): Promise<any | null> {
   const key = `${CALLBACK_PREFIX}${threadId}`;
@@ -27,7 +27,7 @@ export async function getCallbackData(threadId: string): Promise<any | null> {
 }
 
 /**
- * Clear callback data from Redis
+ * Clear callback data for a thread
  * @param threadId The thread ID to clear callback data for
  */
 export async function clearCallbackData(threadId: string): Promise<void> {
@@ -36,8 +36,28 @@ export async function clearCallbackData(threadId: string): Promise<void> {
 }
 
 /**
- * Store task data in Redis
- * @param threadId The thread ID to associate with the task
+ * Wait for callback data for a thread
+ * @param threadId The thread ID to wait for callback data for
+ * @param timeoutMs Timeout in milliseconds (default: 5 minutes)
+ */
+export async function waitForCallback(threadId: string, timeoutMs: number = 5 * 60 * 1000): Promise<any | null> {
+  const startTime = Date.now();
+  const pollInterval = 5000; // Check every 5 seconds
+
+  while (Date.now() - startTime < timeoutMs) {
+    const data = await getCallbackData(threadId);
+    if (data) {
+      return data;
+    }
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+
+  return null;
+}
+
+/**
+ * Store task data for a thread
+ * @param threadId The thread ID to store task data for
  * @param data The task data to store
  */
 export async function setTaskData(threadId: string, data: any): Promise<void> {
@@ -46,48 +66,11 @@ export async function setTaskData(threadId: string, data: any): Promise<void> {
 }
 
 /**
- * Get task data from Redis
- * @param threadId The thread ID to retrieve task data for
+ * Get task data for a thread
+ * @param threadId The thread ID to get task data for
  */
 export async function getTaskData(threadId: string): Promise<any | null> {
   const key = `${TASK_PREFIX}${threadId}`;
   const data = await redis.get(key);
   return data ? JSON.parse(data) : null;
-}
-
-/**
- * Wait for callback data with polling
- * @param threadId The thread ID to wait for
- * @param timeoutMs Maximum time to wait in milliseconds (default: 5 minutes)
- * @param pollIntervalMs Interval between polls in milliseconds (default: 5 seconds)
- */
-export async function waitForCallback(
-  threadId: string,
-  timeoutMs: number = 5 * 60 * 1000,
-  pollIntervalMs: number = 5 * 1000
-): Promise<Message | null> {
-  console.log(`Starting to wait for callback for threadId ${threadId}`);
-  console.log(`Timeout: ${timeoutMs}ms, Poll interval: ${pollIntervalMs}ms`);
-  
-  const startTime = Date.now();
-  let pollCount = 0;
-  
-  while (Date.now() - startTime < timeoutMs) {
-    pollCount++;
-    console.log(`Poll #${pollCount} for callback data...`);
-    
-    const data = await getCallbackData(threadId);
-    if (data) {
-      console.log(`Callback data found on poll #${pollCount}`);
-      return data;
-    }
-    
-    // Wait for the poll interval
-    console.log(`No callback data yet, waiting ${pollIntervalMs}ms before next poll...`);
-    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-  }
-  
-  // Timeout reached
-  console.log(`Timeout reached after ${pollCount} polls. No callback data received.`);
-  return null;
 } 
