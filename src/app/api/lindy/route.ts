@@ -1,17 +1,56 @@
 import { NextResponse } from 'next/server';
 import { 
-  LindyRequest, 
-  LindyResponse, 
-  getTaskData,
-  setTaskData,
+  getTaskData, 
+  setTaskData, 
   waitForCallback 
-} from './utils';
+} from '@/utils/callbackStore';
+import { v4 as uuidv4 } from 'uuid';
+import { Message } from '@/types/chat';
 
 // Get configuration from environment variables
 const LINDY_WEBHOOK_URL = 'https://public.lindy.ai/api/v1/webhooks/lindy/6fdd874b-1e87-48ec-a401-f81546c4ce54';
 const LINDY_SECRET_KEY = 'ceddc1d497adf098fb3564709ebf7f01824ee74a2c3ba8492f43b2d06b3f8681';
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 const CALLBACK_URL = `${BASE_URL}/api/lindy/callback`;
+
+// Define interfaces for Lindy request and response
+interface LindyRequest {
+  message: string;
+  taskId?: string;
+  handleInSameTask: boolean;
+  schedulingDetails?: {
+    date?: string;
+    time?: string;
+    duration?: string;
+    purpose?: string;
+    participants?: string[];
+  };
+  callbackUrl: string;
+  conversationId?: string;
+  source?: 'user' | 'lindy';
+  messageId?: string;
+}
+
+interface LindyResponse {
+  content: string;
+  taskId?: string;
+  requiresDetails?: boolean;
+  schedulingDetails?: {
+    date?: string;
+    time?: string;
+    duration?: string;
+    purpose?: string;
+    participants?: string[];
+  };
+  followUpUrl?: string;
+  conversationId?: string;
+}
+
+// Interface for callback data with additional fields
+interface CallbackData extends Message {
+  conversationId?: string;
+  followUpUrl?: string;
+}
 
 export async function POST(request: Request) {
   try {
@@ -28,19 +67,20 @@ export async function POST(request: Request) {
     const messageWithSource = {
       ...body,
       source: 'user',
-      messageId: Date.now().toString() // For deduplication
+      messageId: body.messageId || uuidv4() // For deduplication
     };
 
     // Ensure we have required fields
     if (!messageWithSource.message) {
       return NextResponse.json({ error: 'No message provided' }, { status: 400 });
     }
-    if (!messageWithSource.threadId) {
-      return NextResponse.json({ error: 'No threadId provided' }, { status: 400 });
-    }
+    
+    // Generate or use provided threadId
+    const threadId = messageWithSource.threadId || uuidv4();
+    messageWithSource.threadId = threadId;
 
     // Get the existing task data for this thread
-    const taskData = getTaskData(messageWithSource.threadId);
+    const taskData = await getTaskData(threadId);
     console.log('Retrieved task data:', taskData);
 
     // Check for duplicate message
@@ -53,7 +93,7 @@ export async function POST(request: Request) {
     const lindyRequest: LindyRequest = {
       message: messageWithSource.message,
       handleInSameTask: true,
-      callbackUrl: `${CALLBACK_URL}?threadId=${messageWithSource.threadId}`,
+      callbackUrl: `${CALLBACK_URL}?threadId=${threadId}`,
       source: 'user',
       messageId: messageWithSource.messageId
     };
@@ -61,8 +101,7 @@ export async function POST(request: Request) {
     // If we have existing task data, use it for continuity
     if (taskData) {
       console.log('Using existing task data for continuity:', {
-        threadId: messageWithSource.threadId,
-        existingTaskId: taskData.taskId,
+        threadId: threadId,
         existingConversationId: taskData.conversationId,
         existingFollowUpUrl: taskData.followUpUrl
       });
@@ -72,9 +111,6 @@ export async function POST(request: Request) {
       }
       if (taskData.conversationId) {
         lindyRequest.conversationId = taskData.conversationId;
-      }
-      if (taskData.taskId) {
-        lindyRequest.taskId = taskData.taskId;
       }
     }
 
@@ -112,8 +148,7 @@ export async function POST(request: Request) {
 
     // Update task data with new information
     if (lindyResponse.taskId || lindyResponse.conversationId || lindyResponse.followUpUrl) {
-      setTaskData(messageWithSource.threadId, {
-        taskId: lindyResponse.taskId || taskData?.taskId || '',
+      await setTaskData(threadId, {
         conversationId: lindyResponse.conversationId || taskData?.conversationId,
         followUpUrl: lindyResponse.followUpUrl || taskData?.followUpUrl,
         lastMessageId: messageWithSource.messageId
@@ -123,21 +158,23 @@ export async function POST(request: Request) {
     // If we have content in the immediate response, return it
     if (lindyResponse.content) {
       console.log('Returning immediate response:', lindyResponse.content);
-      return NextResponse.json(lindyResponse);
+      return NextResponse.json({
+        ...lindyResponse,
+        threadId
+      });
     }
 
     // Wait for the callback response
     console.log('Waiting for callback response...');
-    const callbackResponse = await waitForCallback(messageWithSource.threadId);
+    const callbackResponse = await waitForCallback(threadId) as CallbackData | null;
     if (!callbackResponse) {
       console.log('Callback timeout - no response received');
       return NextResponse.json({ error: 'Timeout waiting for response' }, { status: 504 });
     }
 
     // Store any new task data from callback
-    if (callbackResponse.taskId || callbackResponse.followUpUrl || callbackResponse.conversationId) {
-      setTaskData(messageWithSource.threadId, {
-        taskId: callbackResponse.taskId || taskData?.taskId || '',
+    if (callbackResponse.conversationId || callbackResponse.followUpUrl) {
+      await setTaskData(threadId, {
         followUpUrl: callbackResponse.followUpUrl,
         conversationId: callbackResponse.conversationId || taskData?.conversationId,
         lastMessageId: messageWithSource.messageId
@@ -146,7 +183,10 @@ export async function POST(request: Request) {
     }
 
     console.log('Received callback response:', callbackResponse);
-    return NextResponse.json(callbackResponse);
+    return NextResponse.json({
+      ...callbackResponse,
+      threadId
+    });
   } catch (error) {
     console.error('Error processing request:', error);
     return NextResponse.json({ error: 'Failed to process request' }, { status: 500 });

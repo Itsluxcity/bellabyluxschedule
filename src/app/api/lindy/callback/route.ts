@@ -1,37 +1,47 @@
 import { NextResponse } from 'next/server';
-import { setCallbackResponse, LindyResponse, getTaskData, setTaskData } from '../utils';
+import { setCallbackData, setTaskData } from '@/utils/callbackStore';
+import { Message } from '@/types/chat';
 
 export async function POST(request: Request) {
   try {
-    // Get the threadId from the URL
+    const data = await request.json();
+    
+    // Extract threadId from the URL query parameters
     const url = new URL(request.url);
     const threadId = url.searchParams.get('threadId');
-
+    
     if (!threadId) {
-      return NextResponse.json({ error: 'No threadId provided' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Missing threadId in callback URL' },
+        { status: 400 }
+      );
     }
-
-    // Get the response data
-    const data = await request.json();
-    console.log('Received callback for thread:', threadId, 'with data:', data);
-
-    // Store the response
-    setCallbackResponse(threadId, data as LindyResponse);
-
-    // Update task data with conversationId and followUpUrl if provided
-    const existingTaskData = getTaskData(threadId);
-    if (existingTaskData && (data.conversationId || data.followUpUrl)) {
-      setTaskData(threadId, {
-        ...existingTaskData,
-        conversationId: data.conversationId || existingTaskData.conversationId,
-        followUpUrl: data.followUpUrl || existingTaskData.followUpUrl
+    
+    // Create a message object from the callback data
+    const message: Message = {
+      role: 'assistant',
+      content: data.content,
+      schedulingDetails: data.schedulingDetails
+    };
+    
+    // Store the callback data with the threadId
+    await setCallbackData(threadId, message);
+    
+    // If conversationId or followUpUrl is provided, store it for task continuity
+    if (data.conversationId || data.followUpUrl) {
+      await setTaskData(threadId, {
+        conversationId: data.conversationId,
+        followUpUrl: data.followUpUrl,
+        lastMessageId: data.messageId
       });
     }
 
-    // Return success
-    return NextResponse.json({ status: 'ok' });
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Callback error:', error);
-    return NextResponse.json({ error: 'Failed to process callback' }, { status: 500 });
+    console.error('Error in callback:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 } 
