@@ -13,6 +13,8 @@ export interface LindyRequest {
   schedulingDetails?: SchedulingDetails;
   callbackUrl: string;
   conversationId?: string;
+  source?: 'user' | 'lindy';
+  messageId?: string;
 }
 
 export interface LindyResponse {
@@ -25,9 +27,19 @@ export interface LindyResponse {
 }
 
 // Store task IDs and followUpUrls for each thread
-const taskData = new Map<string, { taskId: string; followUpUrl?: string; conversationId?: string }>();
+const taskData = new Map<string, { 
+  taskId: string; 
+  followUpUrl?: string; 
+  conversationId?: string;
+  lastMessageId?: string;
+}>();
 
-export function setTaskData(threadId: string, data: { taskId: string; followUpUrl?: string; conversationId?: string }) {
+export function setTaskData(threadId: string, data: { 
+  taskId: string; 
+  followUpUrl?: string; 
+  conversationId?: string;
+  lastMessageId?: string;
+}) {
   taskData.set(threadId, data);
   console.log('Stored task data for thread:', threadId, data);
 }

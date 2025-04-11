@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { setCallbackResponse, LindyResponse } from '../utils';
+import { setCallbackResponse, LindyResponse, getTaskData, setTaskData } from '../utils';
 
 export async function POST(request: Request) {
   try {
@@ -18,8 +18,18 @@ export async function POST(request: Request) {
     // Store the response
     setCallbackResponse(threadId, data as LindyResponse);
 
+    // Update task data with conversationId and followUpUrl if provided
+    const existingTaskData = getTaskData(threadId);
+    if (existingTaskData && (data.conversationId || data.followUpUrl)) {
+      setTaskData(threadId, {
+        ...existingTaskData,
+        conversationId: data.conversationId || existingTaskData.conversationId,
+        followUpUrl: data.followUpUrl || existingTaskData.followUpUrl
+      });
+    }
+
     // Return success
-    return NextResponse.json({ value: "Message sent" });
+    return NextResponse.json({ status: 'ok' });
   } catch (error) {
     console.error('Callback error:', error);
     return NextResponse.json({ error: 'Failed to process callback' }, { status: 500 });
