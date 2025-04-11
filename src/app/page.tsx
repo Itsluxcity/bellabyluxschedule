@@ -74,59 +74,91 @@ export default function Home() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/lindy', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: formattedMessage,
-          threadId: 'bella-scheduling',
-          schedulingDetails: schedulingDetails
-        }),
-      });
-
-      const data = await response.json();
-      
-      if (!response.ok) {
-        // Create a detailed error message
-        const errorDetails = data.details || data.error || 'Unknown error occurred';
-        const errorMessage: Message = {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: `Error: ${errorDetails}\n\nStatus: ${response.status}\nEndpoint: /api/lindy\nRequest: ${formattedMessage}\n\nPlease try again or contact support if this persists.`,
-          timestamp: new Date().toISOString()
-        };
-        setMessages(prev => [...prev, errorMessage]);
-        return;
-      }
-
-      // Add Bella's response to chat
-      const bellaMessage: Message = {
-        id: Date.now().toString(),
+      // Show a "thinking" message while we wait
+      const thinkingMessage: Message = {
+        id: 'thinking',
         role: 'assistant',
-        content: data.content,
+        content: 'Thinking...',
         timestamp: new Date().toISOString()
       };
+      setMessages(prev => [...prev, thinkingMessage]);
+
+      // Start polling for response
+      let attempts = 0;
+      const maxAttempts = 30; // 30 attempts * 3 seconds = 90 seconds (1.5 minutes) max wait
+      let response = null;
+
+      while (attempts < maxAttempts) {
+        console.log(`Attempt ${attempts + 1} of ${maxAttempts}`);
+        response = await fetch('/api/lindy', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: formattedMessage,
+            threadId: 'bella-scheduling',
+            schedulingDetails: schedulingDetails
+          }),
+        });
+
+        const data = await response.json();
+        
+        // If we got a valid response, use it
+        if (response.ok && data.content) {
+          // Remove thinking message
+          setMessages(prev => prev.filter(msg => msg.id !== 'thinking'));
+
+          // Add Bella's response
+          const bellaMessage: Message = {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: data.content,
+            timestamp: new Date().toISOString()
+          };
+          setMessages(prev => [...prev, bellaMessage]);
+
+          // Update scheduling details if provided
+          if (data.schedulingDetails) {
+            setSchedulingDetails(data.schedulingDetails);
+          }
+
+          // If more details are required, show the scheduling form
+          if (data.requiresDetails) {
+            setShowSchedulingForm(true);
+          }
+
+          return;
+        }
+
+        // If we got an error that's not a timeout, break
+        if (response.status !== 504) {
+          break;
+        }
+
+        // Wait 3 seconds before trying again
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        attempts++;
+      }
+
+      // If we get here, we've timed out or got an error
+      setMessages(prev => prev.filter(msg => msg.id !== 'thinking'));
       
-      setMessages(prev => [...prev, bellaMessage]);
-
-      // Update scheduling details if provided
-      if (data.schedulingDetails) {
-        setSchedulingDetails(data.schedulingDetails);
-      }
-
-      // If more details are required, show the scheduling form
-      if (data.requiresDetails) {
-        setShowSchedulingForm(true);
-      }
-
-    } catch (error) {
-      // Create a detailed error message for network/parsing errors
+      const errorDetails = response ? await response.json() : { error: 'Timeout waiting for response' };
       const errorMessage: Message = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: `Error: ${error instanceof Error ? error.message : 'Failed to connect to server'}\n\nThis could be due to:\n- Network connectivity issues\n- Server being unavailable\n- Invalid response format\n\nPlease try again or contact support if this persists.`,
+        content: `I apologize, but I encountered an issue: ${errorDetails.error || 'No response received'}. Please try again.`,
+        timestamp: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+
+    } catch (error) {
+      setMessages(prev => prev.filter(msg => msg.id !== 'thinking'));
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `I apologize, but I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
         timestamp: new Date().toISOString()
       };
       setMessages(prev => [...prev, errorMessage]);
