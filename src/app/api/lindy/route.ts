@@ -59,19 +59,14 @@ export async function POST(req: Request) {
     const { message, threadId: providedThreadId, metadata } = await req.json();
     const threadId = providedThreadId || uuidv4();
 
-    // Check for callback data and append to messages if it exists
-    const callbackData = await getCallbackData(threadId);
-    const messages = callbackData ? [callbackData] : [];
-
     // Prepare the request to Lindy
     const lindyRequest = {
-      messages: [...messages, { role: 'user', content: message }],
-      threadId,
-      metadata: {
-        ...metadata,
-        source: 'user'
-      },
-      callbackUrl: `${CALLBACK_URL}?threadId=${threadId}`
+      message: message,
+      threadId: threadId,
+      handleInSameTask: true,
+      callbackUrl: `${CALLBACK_URL}?threadId=${threadId}`,
+      source: 'user',
+      messageId: uuidv4()
     };
 
     // Make the request to Lindy
@@ -103,11 +98,6 @@ export async function POST(req: Request) {
     const callbackResponse = await waitForCallback(threadId);
     if (!callbackResponse) {
       return NextResponse.json({ error: 'Timeout waiting for response' }, { status: 504 });
-    }
-
-    // Clear callback data after successful request
-    if (callbackData) {
-      await clearCallbackData(threadId);
     }
 
     return NextResponse.json({
