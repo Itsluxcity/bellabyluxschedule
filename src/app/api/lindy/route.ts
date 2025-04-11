@@ -43,8 +43,9 @@ function getLastTaskId(threadId: string): string | undefined {
 // Store callback responses
 const callbackResponses = new Map<string, LindyResponse>();
 
-function setCallbackResponse(threadId: string, response: LindyResponse) {
+export function setCallbackResponse(threadId: string, response: LindyResponse) {
   callbackResponses.set(threadId, response);
+  console.log('Stored callback response for thread:', threadId, response);
 }
 
 async function waitForCallback(threadId: string, timeout: number = 30000): Promise<LindyResponse | null> {
@@ -126,8 +127,14 @@ export async function POST(request: Request) {
       console.log('Stored task ID:', data.taskId);
     }
 
-    // Wait for callback response
-    console.log('Waiting for callback response...');
+    // If we have content in the immediate response, return it
+    if (data.content) {
+      console.log('Returning immediate response:', data.content);
+      return NextResponse.json(data);
+    }
+
+    // Otherwise wait for callback response
+    console.log('No immediate content, waiting for callback response...');
     const callbackResponse = await waitForCallback(body.threadId);
     if (!callbackResponse) {
       console.log('Callback timeout - no response received');
