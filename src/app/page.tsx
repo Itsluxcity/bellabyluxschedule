@@ -35,7 +35,9 @@ export default function Home() {
   const [userName, setUserName] = useState('')
   const [showWelcome, setShowWelcome] = useState(true)
   const [threadId, setThreadId] = useState<string>('')
-  const [schedulingDetails, setSchedulingDetails] = useState<SchedulingDetails | null>(null)
+  const [schedulingDetails, setSchedulingDetails] = useState<SchedulingDetails>({})
+  const [inputMessage, setInputMessage] = useState('')
+  const [showSchedulingForm, setShowSchedulingForm] = useState(false)
 
   // Generate a new thread ID when the component mounts
   useEffect(() => {
@@ -43,77 +45,91 @@ export default function Home() {
   }, []);
 
   const handleNameSubmit = (name: string) => {
-    setUserName(name)
-    setShowWelcome(false)
-    setMessages([
-      { 
-        id: Date.now().toString(),
-        role: 'assistant' as const, 
-        content: `Hi ${name}! I'm Bella, Christian Gates' scheduling assistant. How can I help you schedule something today?` 
-      }
-    ])
-  }
+    setUserName(name);
+    setShowWelcome(false);
+    setMessages([{
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: `Hello ${name}! I'm Bella, your scheduling assistant. How can I help you today?`,
+      timestamp: new Date().toISOString()
+    }]);
+  };
 
   const handleSubmit = async (message: string) => {
-    try {
-      // Add user message immediately
-      setMessages(prev => [...prev, { 
-        id: Date.now().toString(),
-        role: 'user', 
-        content: message 
-      }]);
-      setIsLoading(true);
+    if (!message.trim()) return;
 
-      // Send message to Lindy with thread ID
+    // Format the message with the user's name
+    const formattedMessage = `From ${userName}: ${message}`;
+    
+    // Add user message to chat
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: formattedMessage,
+      timestamp: new Date().toISOString()
+    };
+    
+    setMessages(prev => [...prev, userMessage]);
+    setInputMessage('');
+    setIsLoading(true);
+
+    try {
       const response = await fetch('/api/lindy', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          content: message,
-          threadId: threadId,
-          schedulingDetails: schedulingDetails || {}
-        })
+        body: JSON.stringify({
+          message: formattedMessage,
+          threadId: 'bella-scheduling',
+          schedulingDetails: schedulingDetails
+        }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to send message');
-      }
-
-      // Wait for and process the response
       const data = await response.json();
-      console.log('Received response:', data);
       
-      if (data.error) {
-        throw new Error(data.error);
+      if (!response.ok) {
+        // Create a detailed error message
+        const errorDetails = data.details || data.error || 'Unknown error occurred';
+        const errorMessage: Message = {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: `Error: ${errorDetails}\n\nStatus: ${response.status}\nEndpoint: /api/lindy\nRequest: ${formattedMessage}\n\nPlease try again or contact support if this persists.`,
+          timestamp: new Date().toISOString()
+        };
+        setMessages(prev => [...prev, errorMessage]);
+        return;
       }
 
-      const responseContent = data.content || data.message;
-      if (!responseContent) {
-        throw new Error('No response content received');
-      }
-
-      // Add the response to messages
-      setMessages(prev => [...prev, { 
+      // Add Bella's response to chat
+      const bellaMessage: Message = {
         id: Date.now().toString(),
-        role: 'assistant', 
-        content: responseContent
-      }]);
+        role: 'assistant',
+        content: data.content,
+        timestamp: new Date().toISOString()
+      };
+      
+      setMessages(prev => [...prev, bellaMessage]);
 
       // Update scheduling details if provided
       if (data.schedulingDetails) {
         setSchedulingDetails(data.schedulingDetails);
       }
 
-    } catch (error: any) {
-      console.error('Error:', error);
-      setMessages(prev => [...prev, { 
+      // If more details are required, show the scheduling form
+      if (data.requiresDetails) {
+        setShowSchedulingForm(true);
+      }
+
+    } catch (error) {
+      // Create a detailed error message for network/parsing errors
+      const errorMessage: Message = {
         id: Date.now().toString(),
-        role: 'assistant', 
-        content: `I apologize, but I encountered an error: ${error.message}. Please try again.` 
-      }]);
+        role: 'assistant',
+        content: `Error: ${error instanceof Error ? error.message : 'Failed to connect to server'}\n\nThis could be due to:\n- Network connectivity issues\n- Server being unavailable\n- Invalid response format\n\nPlease try again or contact support if this persists.`,
+        timestamp: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
