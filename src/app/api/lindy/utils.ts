@@ -56,15 +56,15 @@ export function setCallbackResponse(threadId: string, response: LindyResponse) {
   console.log('Stored callback response for thread:', threadId, response);
 }
 
-export async function waitForCallback(threadId: string, timeout: number = 30000): Promise<LindyResponse | null> {
+export async function waitForCallback(threadId: string, timeout: number = 300000): Promise<LindyResponse | null> {
   const startTime = Date.now();
   while (Date.now() - startTime < timeout) {
     const response = callbackResponses.get(threadId);
     if (response) {
-      callbackResponses.delete(threadId); // Clean up
+      callbackResponses.delete(threadId); // Clear the response after retrieving it
       return response;
     }
-    await new Promise(resolve => setTimeout(resolve, 100)); // Poll every 100ms
+    await new Promise(resolve => setTimeout(resolve, 5000)); // Check every 5 seconds
   }
   return null;
 } 

@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     const lindyRequest: LindyRequest = {
       message: messageWithSource.message,
       handleInSameTask: true,
-      callbackUrl: CALLBACK_URL,
+      callbackUrl: `${CALLBACK_URL}?threadId=${messageWithSource.threadId}`,
       source: 'user',
       messageId: messageWithSource.messageId
     };
@@ -98,7 +98,33 @@ export async function POST(request: Request) {
       });
     }
 
-    return NextResponse.json({ status: 'ok' });
+    // If we have content in the immediate response, return it
+    if (lindyResponse.content) {
+      console.log('Returning immediate response:', lindyResponse.content);
+      return NextResponse.json(lindyResponse);
+    }
+
+    // Otherwise wait for callback response
+    console.log('No immediate content, waiting for callback response...');
+    const callbackResponse = await waitForCallback(messageWithSource.threadId);
+    if (!callbackResponse) {
+      console.log('Callback timeout - no response received');
+      return NextResponse.json({ error: 'Timeout waiting for response' }, { status: 504 });
+    }
+
+    // Store any new task data from callback
+    if (callbackResponse.taskId || callbackResponse.followUpUrl || callbackResponse.conversationId) {
+      setTaskData(messageWithSource.threadId, {
+        taskId: callbackResponse.taskId || taskData?.taskId || '',
+        followUpUrl: callbackResponse.followUpUrl,
+        conversationId: callbackResponse.conversationId || taskData?.conversationId,
+        lastMessageId: messageWithSource.messageId
+      });
+      console.log('Updated task data from callback');
+    }
+
+    console.log('Received callback response:', callbackResponse);
+    return NextResponse.json(callbackResponse);
   } catch (error) {
     console.error('Error processing request:', error);
     return NextResponse.json({ error: 'Failed to process request' }, { status: 500 });
