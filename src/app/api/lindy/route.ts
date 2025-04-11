@@ -126,8 +126,8 @@ export async function POST(request: Request) {
       return NextResponse.json(lindyResponse);
     }
 
-    // Otherwise wait for callback response
-    console.log('No immediate content, waiting for callback response...');
+    // Wait for the callback response
+    console.log('Waiting for callback response...');
     const callbackResponse = await waitForCallback(messageWithSource.threadId);
     if (!callbackResponse) {
       console.log('Callback timeout - no response received');
