@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import { 
   getTaskData, 
   setTaskData, 
-  waitForCallback 
+  waitForCallback,
+  getCallbackData,
+  clearCallbackData
 } from '@/utils/callbackStore';
 import { v4 as uuidv4 } from 'uuid';
 import { Message } from '@/types/chat';
@@ -52,158 +54,52 @@ interface CallbackData extends Message {
   followUpUrl?: string;
 }
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    console.log('=== LINDY API ROUTE STARTED ===');
-    const body = await request.json();
-    console.log('Received request body:', JSON.stringify(body, null, 2));
+    const { message, threadId, metadata } = await req.json();
 
-    // Check if this is a callback from Lindy
-    if (body.source === 'lindy' || body.isCallback) {
-      console.log('Skipping response loop: message from Lindy');
-      return NextResponse.json({ status: 'ok' });
-    }
-
-    // Add source identifier for user messages
-    const messageWithSource = {
-      ...body,
-      source: 'user',
-      messageId: body.messageId || uuidv4() // For deduplication
-    };
-
-    // Ensure we have required fields
-    if (!messageWithSource.message) {
-      console.log('Error: No message provided');
-      return NextResponse.json({ error: 'No message provided' }, { status: 400 });
-    }
-    
-    // Generate or use provided threadId
-    const threadId = messageWithSource.threadId || uuidv4();
-    messageWithSource.threadId = threadId;
-    console.log('Using threadId:', threadId);
-
-    // Get the existing task data for this thread
-    console.log('Attempting to get task data from Redis...');
-    const taskData = await getTaskData(threadId);
-    console.log('Retrieved task data:', taskData);
-
-    // Check for duplicate message
-    if (taskData?.lastMessageId === messageWithSource.messageId) {
-      console.log('Duplicate message detected. Skipping.');
-      return NextResponse.json({ status: 'skipped', reason: 'duplicate' });
-    }
+    // Check for callback data and append to messages if it exists
+    const callbackData = await getCallbackData(threadId);
+    const messages = callbackData ? [callbackData] : [];
 
     // Prepare the request to Lindy
-    const lindyRequest: LindyRequest = {
-      message: messageWithSource.message,
-      handleInSameTask: true,
-      callbackUrl: `${CALLBACK_URL}?threadId=${threadId}`,
-      source: 'user',
-      messageId: messageWithSource.messageId
+    const lindyRequest = {
+      messages: [...messages, { role: 'user', content: message }],
+      threadId,
+      metadata: {
+        ...metadata,
+        source: 'user'
+      }
     };
 
-    // If we have existing task data, use it for continuity
-    if (taskData) {
-      console.log('Using existing task data for continuity:', {
-        threadId: threadId,
-        existingConversationId: taskData.conversationId,
-        existingFollowUpUrl: taskData.followUpUrl
-      });
-      
-      if (taskData.followUpUrl) {
-        lindyRequest.callbackUrl = taskData.followUpUrl;
-        console.log('Using followUpUrl for callback:', taskData.followUpUrl);
-      }
-      if (taskData.conversationId) {
-        lindyRequest.conversationId = taskData.conversationId;
-        console.log('Using conversationId for continuity:', taskData.conversationId);
-      }
-    }
-
-    // Determine which URL to use for the request
-    let targetUrl = LINDY_WEBHOOK_URL;
-    if (taskData?.followUpUrl) {
-      targetUrl = taskData.followUpUrl;
-      console.log('Using followUpUrl for request:', targetUrl);
-    } else if (taskData?.conversationId) {
-      targetUrl = `${LINDY_WEBHOOK_URL}?conversationId=${taskData.conversationId}`;
-      console.log('Using conversationId in URL:', targetUrl);
-    }
-
-    console.log('Sending request to Lindy:', {
-      url: targetUrl,
-      request: JSON.stringify(lindyRequest, null, 2)
-    });
-
-    // Send request to Lindy
-    console.log('Making fetch request to Lindy...');
-    const response = await fetch(targetUrl, {
+    // Make the request to Lindy
+    const response = await fetch('https://api.lindy.ai/v1/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${LINDY_SECRET_KEY}`
+        'Authorization': `Bearer ${process.env.LINDY_API_KEY}`
       },
       body: JSON.stringify(lindyRequest)
     });
 
-    console.log('Lindy response status:', response.status, response.statusText);
-    
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Lindy API error response:', errorText);
-      throw new Error(`Lindy API error: ${response.statusText} - ${errorText}`);
+      const error = await response.text();
+      throw new Error(`Lindy API error: ${error}`);
     }
 
-    const lindyResponse = await response.json();
-    console.log('Lindy response:', JSON.stringify(lindyResponse, null, 2));
+    const data = await response.json();
 
-    // Update task data with new information
-    if (lindyResponse.taskId || lindyResponse.conversationId || lindyResponse.followUpUrl) {
-      console.log('Updating task data with new information...');
-      await setTaskData(threadId, {
-        conversationId: lindyResponse.conversationId || taskData?.conversationId,
-        followUpUrl: lindyResponse.followUpUrl || taskData?.followUpUrl,
-        lastMessageId: messageWithSource.messageId
-      });
-      console.log('Task data updated successfully');
+    // Clear callback data after successful request
+    if (callbackData) {
+      await clearCallbackData(threadId);
     }
 
-    // If we have content in the immediate response, return it
-    if (lindyResponse.content) {
-      console.log('Returning immediate response:', lindyResponse.content);
-      return NextResponse.json({
-        ...lindyResponse,
-        threadId
-      });
-    }
-
-    // Wait for the callback response
-    console.log('Waiting for callback response...');
-    const callbackResponse = await waitForCallback(threadId) as CallbackData | null;
-    if (!callbackResponse) {
-      console.log('Callback timeout - no response received');
-      return NextResponse.json({ error: 'Timeout waiting for response' }, { status: 504 });
-    }
-
-    // Store any new task data from callback
-    if (callbackResponse.conversationId || callbackResponse.followUpUrl) {
-      console.log('Updating task data from callback...');
-      await setTaskData(threadId, {
-        followUpUrl: callbackResponse.followUpUrl,
-        conversationId: callbackResponse.conversationId || taskData?.conversationId,
-        lastMessageId: messageWithSource.messageId
-      });
-      console.log('Updated task data from callback');
-    }
-
-    console.log('Received callback response:', JSON.stringify(callbackResponse, null, 2));
-    console.log('=== LINDY API ROUTE COMPLETED ===');
-    return NextResponse.json({
-      ...callbackResponse,
-      threadId
-    });
+    return NextResponse.json(data);
   } catch (error) {
-    console.error('Error processing request:', error);
-    return NextResponse.json({ error: 'Failed to process request' }, { status: 500 });
+    console.error('Error in Lindy route:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Unknown error occurred' },
+      { status: 500 }
+    );
   }
 } 
