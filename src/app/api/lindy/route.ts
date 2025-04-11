@@ -98,13 +98,24 @@ export async function POST(request: Request) {
     const callbackResponse = await waitForCallback(body.threadId);
     if (callbackResponse) {
       console.log('Received callback response:', JSON.stringify(callbackResponse, null, 2));
-      return NextResponse.json(callbackResponse);
+      // Return a formatted response that won't trigger another Lindy request
+      return NextResponse.json({
+        success: true,
+        message: callbackResponse.content,
+        taskId: callbackResponse.taskId,
+        schedulingDetails: callbackResponse.schedulingDetails
+      });
     }
 
     // If no callback received and we have content in the initial response, use that
     if (data.content) {
       console.log('No callback received, using initial response:', data.content);
-      return NextResponse.json(data);
+      return NextResponse.json({
+        success: true,
+        message: data.content,
+        taskId: data.taskId,
+        schedulingDetails: data.schedulingDetails
+      });
     }
 
     // If we get here, we have no response at all
