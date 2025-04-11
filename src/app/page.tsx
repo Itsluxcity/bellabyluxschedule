@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
-import ChatInput from '@/components/ChatInput'
-import MessageList from '@/components/MessageList'
-import SuggestionBubbles from '@/components/SuggestionBubbles'
-import WelcomeOverlay from '@/components/WelcomeOverlay'
+import { useState, useEffect } from 'react'
+import ChatInput from '../components/ChatInput'
+import MessageList from '../components/MessageList'
+import SuggestionBubbles from '../components/SuggestionBubbles'
+import WelcomeOverlay from '../components/WelcomeOverlay'
 import { Message } from '@/types'
 
 interface SchedulingDetails {
@@ -18,12 +18,14 @@ interface SchedulingDetails {
 interface LindyRequest {
   content: string;
   taskId?: string;
+  followUpUrl?: string;
   schedulingDetails?: SchedulingDetails;
 }
 
 interface LindyResponse {
   content: string;
   taskId: string;
+  followUpUrl?: string;
   schedulingDetails?: SchedulingDetails;
 }
 
@@ -32,8 +34,13 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false)
   const [userName, setUserName] = useState('')
   const [showWelcome, setShowWelcome] = useState(true)
-  const [currentTaskId, setCurrentTaskId] = useState<string>('')
+  const [threadId, setThreadId] = useState<string>('')
   const [schedulingDetails, setSchedulingDetails] = useState<SchedulingDetails | null>(null)
+
+  // Generate a new thread ID when the component mounts
+  useEffect(() => {
+    setThreadId(Date.now().toString());
+  }, []);
 
   const handleNameSubmit = (name: string) => {
     setUserName(name)
@@ -47,61 +54,51 @@ export default function Home() {
     ])
   }
 
-  const handleSendMessage = async (message: string) => {
-    if (!message.trim() || isLoading) return;
-    
-    setIsLoading(true);
-    
+  const handleSubmit = async (message: string) => {
     try {
-      // Add user message first
-      setMessages(prev => [...prev, {
+      // Add user message immediately
+      setMessages(prev => [...prev, { 
         id: Date.now().toString(),
-        role: 'user',
-        content: message
+        role: 'user', 
+        content: message 
       }]);
+      setIsLoading(true);
 
-      // Format request for Lindy - ALWAYS include taskId
-      const lindyRequest: LindyRequest = {
-        content: message.trim(),
-        taskId: currentTaskId || '', // Empty string if no taskId
-        schedulingDetails: {
-          date: '',
-          time: '',
-          duration: '',
-          purpose: '',
-          participants: [userName]
-        }
-      };
-
-      console.log('Sending request with taskId:', lindyRequest.taskId);
-
-      // Send to Lindy
+      // Send message to Lindy with thread ID
       const response = await fetch('/api/lindy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(lindyRequest)
+        body: JSON.stringify({ 
+          content: message,
+          threadId: threadId,
+          schedulingDetails: schedulingDetails || {}
+        })
       });
 
-      const data = await response.json();
-      console.log('Received response with taskId:', data.taskId);
-      
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to get response');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send message');
       }
 
-      // Update taskId ONLY if Lindy sends a new one
-      if (data.taskId) {
-        console.log('Updating taskId to:', data.taskId);
-        setCurrentTaskId(data.taskId);
+      // Wait for and process the response
+      const data = await response.json();
+      console.log('Received response:', data);
+      
+      if (data.error) {
+        throw new Error(data.error);
       }
 
-      // Add Lindy's response
-      setMessages(prev => [...prev, {
+      if (!data.content) {
+        throw new Error('No response content received');
+      }
+
+      // Add the response to messages
+      setMessages(prev => [...prev, { 
         id: Date.now().toString(),
-        role: 'assistant',
-        content: data.content
+        role: 'assistant', 
+        content: data.content 
       }]);
 
       // Update scheduling details if provided
@@ -109,17 +106,17 @@ export default function Home() {
         setSchedulingDetails(data.schedulingDetails);
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error:', error);
-      setMessages(prev => [...prev, {
+      setMessages(prev => [...prev, { 
         id: Date.now().toString(),
-        role: 'assistant',
-        content: 'I apologize, but I encountered an error. Please try again.'
+        role: 'assistant', 
+        content: `I apologize, but I encountered an error: ${error.message}. Please try again.` 
       }]);
     } finally {
       setIsLoading(false);
     }
-  }
+  };
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-between p-4 md:p-24">
@@ -129,9 +126,9 @@ export default function Home() {
         <div className="chat-container">
           <MessageList messages={messages} isLoading={isLoading} />
           <div className="fixed-bottom">
-            <SuggestionBubbles onSelect={handleSendMessage} />
+            <SuggestionBubbles onSelect={handleSubmit} />
             <div className="input-container">
-              <ChatInput onSendMessage={handleSendMessage} isLoading={isLoading} />
+              <ChatInput onSendMessage={handleSubmit} isLoading={isLoading} />
             </div>
           </div>
         </div>
