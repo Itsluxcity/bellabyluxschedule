@@ -1,10 +1,8 @@
 import { Message } from '@/types/chat';
-import { redis } from '@/lib/redis';
 
-// Redis key prefixes
-const CALLBACK_PREFIX = 'lindy:callback:';
-const TASK_PREFIX = 'lindy:task:';
-const TTL = 300; // 5 minutes in seconds
+// In-memory storage
+const callbackStore = new Map<string, any>();
+const taskStore = new Map<string, any>();
 
 /**
  * Store callback data for a thread
@@ -12,8 +10,7 @@ const TTL = 300; // 5 minutes in seconds
  * @param data The callback data to store
  */
 export async function setCallbackData(threadId: string, data: any): Promise<void> {
-  const key = `${CALLBACK_PREFIX}${threadId}`;
-  await redis.set(key, JSON.stringify(data), 'EX', TTL);
+  callbackStore.set(threadId, data);
 }
 
 /**
@@ -21,9 +18,7 @@ export async function setCallbackData(threadId: string, data: any): Promise<void
  * @param threadId The thread ID to get callback data for
  */
 export async function getCallbackData(threadId: string): Promise<any | null> {
-  const key = `${CALLBACK_PREFIX}${threadId}`;
-  const data = await redis.get(key);
-  return data ? JSON.parse(data) : null;
+  return callbackStore.get(threadId) || null;
 }
 
 /**
@@ -31,8 +26,7 @@ export async function getCallbackData(threadId: string): Promise<any | null> {
  * @param threadId The thread ID to clear callback data for
  */
 export async function clearCallbackData(threadId: string): Promise<void> {
-  const key = `${CALLBACK_PREFIX}${threadId}`;
-  await redis.del(key);
+  callbackStore.delete(threadId);
 }
 
 /**
@@ -74,8 +68,7 @@ export async function waitForCallback(threadId: string, timeoutMs: number = 5 * 
  * @param data The task data to store
  */
 export async function setTaskData(threadId: string, data: any): Promise<void> {
-  const key = `${TASK_PREFIX}${threadId}`;
-  await redis.set(key, JSON.stringify(data), 'EX', 3600); // 1 hour expiry
+  taskStore.set(threadId, data);
 }
 
 /**
@@ -83,7 +76,5 @@ export async function setTaskData(threadId: string, data: any): Promise<void> {
  * @param threadId The thread ID to get task data for
  */
 export async function getTaskData(threadId: string): Promise<any | null> {
-  const key = `${TASK_PREFIX}${threadId}`;
-  const data = await redis.get(key);
-  return data ? JSON.parse(data) : null;
+  return taskStore.get(threadId) || null;
 } 
