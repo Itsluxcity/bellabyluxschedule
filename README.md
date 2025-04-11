@@ -61,4 +61,8 @@ chat-gpt-clone/
 
 ## Contributing
 
-Feel free to submit issues and enhancement requests! 
+Feel free to submit issues and enhancement requests!
+
+# Bella By Lux Schedule
+
+Last updated: 2024-04-10 22:00:00 UTC 
